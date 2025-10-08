@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Projects | RegenArdhi</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/projects.css') }}" />
+</head>
+<body>
+    <!-- Navbar -->
+    <header>
+        <nav class="navbar">
+            <div class="logo-container">
+                <span class="logo-icon">🌿</span>
+                <h1 class="logo"><a href="{{ url_for('main.home') }}">RegenArdhi</a></h1>
+            </div>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
+                <li><a href="{{ url_for('projects.projects') }}" class="active">Projects</a></li>
+                <li><a href="#monitoring">Monitoring</a></li>
+                <li><a href="#insights">Insights</a></li>
+            </ul>
+            <div class="nav-actions">
+                <div class="user-menu">
+                    <button class="user-btn" id="userMenuBtn">
+                        <i class="fas fa-user-circle"></i>
+                        <span>{{ user.first_name }}</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="dropdown-menu" id="userDropdown">
+                        <a href="#profile"><i class="fas fa-user"></i> Profile</a>
+                        <a href="#settings"><i class="fas fa-cog"></i> Settings</a>
+                        <a href="{{ url_for('main.logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                    </div>
+                </div>
+            </div>
+            <button class="mobile-toggle" id="mobileToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="projects-main">
+        <div class="container">
+            <!-- Page Header with Quick Actions -->
+            <section class="page-header">
+                <div class="header-content">
+                    <h1><i class="fas fa-leaf"></i> Land Restoration Projects</h1>
+                    <p>AI-powered analysis with GPS-enabled quick creation</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-success" id="quickCreateBtn" title="Create project using your current location">
+                        <i class="fas fa-bolt"></i> Quick Create
+                    </button>
+                    <button class="btn btn-primary" id="newProjectBtn">
+                        <i class="fas fa-plus"></i> New Project
+                    </button>
+                </div>
+            </section>
+
+            <!-- Quick Stats -->
+            <section class="quick-stats">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+                        <i class="fas fa-project-diagram"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-label">Active Projects</span>
+                        <span class="stat-value" id="activeCount">0</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%)">
+                        <i class="fas fa-globe-africa"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-label">Total Area</span>
+                        <span class="stat-value" id="totalArea">0</span>
+                        <span class="stat-unit">hectares</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-label">Average Progress</span>
+                        <span class="stat-value" id="avgProgress">0</span>
+                        <span class="stat-unit">%</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%)">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <span class="stat-label">Active Alerts</span>
+                        <span class="stat-value alert-count" id="alertCount">0</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Filter & Search -->
+            <section class="filter-section">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchProjects" placeholder="Search projects...">
+                </div>
+                <div class="filter-controls">
+                    <select id="filterStatus" class="filter-select">
+                        <option value="">All Status</option>
+                        <option value="planning">Planning</option>
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                        <option value="paused">Paused</option>
+                    </select>
+                    <select id="filterType" class="filter-select">
+                        <option value="">All Types</option>
+                        <option value="reforestation">Reforestation</option>
+                        <option value="soil-conservation">Soil Conservation</option>
+                        <option value="watershed">Watershed</option>
+                        <option value="agroforestry">Agroforestry</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- Projects Grid -->
+            <section class="projects-container">
+                <div id="projectsGrid" class="projects-grid">
+                    <div class="loading-spinner">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Loading projects...</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Simplified Project Creation Modal -->
+    <div class="modal" id="projectModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-map-marked-alt"></i> Create Project</h2>
+                <button class="close-modal" id="closeModalBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form id="projectForm" class="project-form" style="padding: 2rem;">
+                <div class="form-row">
+                    <div class="form-group full">
+                        <label for="projectName">
+                            <i class="fas fa-heading"></i> Project Name *
+                        </label>
+                        <input type="text" id="projectName" placeholder="e.g., Machakos Reforestation Initiative" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="projectType">
+                            <i class="fas fa-tag"></i> Project Type *
+                        </label>
+                        <select id="projectType" required>
+                            <option value="">Select type...</option>
+                            <option value="reforestation">🌲 Reforestation</option>
+                            <option value="soil-conservation">🏔️ Soil Conservation</option>
+                            <option value="watershed">💧 Watershed Restoration</option>
+                            <option value="agroforestry">🌾 Agroforestry</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="projectArea">
+                            <i class="fas fa-ruler-combined"></i> Area (hectares) *
+                        </label>
+                        <input type="number" id="projectArea" placeholder="e.g., 50" step="0.1" min="0.1" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group full">
+                        <label for="projectDescription">
+                            <i class="fas fa-align-left"></i> Description
+                        </label>
+                        <textarea id="projectDescription" placeholder="Describe your land restoration goals..." rows="3"></textarea>
+                    </div>
+                </div>
+
+                <div class="location-section">
+                    <div class="location-header">
+                        <h3><i class="fas fa-map-marker-alt"></i> Project Location</h3>
+                        <button type="button" class="btn btn-outline" id="useGPSBtn" onclick="useCurrentLocation()" style="display: none;">
+                            <i class="fas fa-crosshairs"></i> Use My Location
+                        </button>
+                    </div>
+
+                    <!-- Location Display -->
+                    <div id="locationDisplay" class="location-display" style="display: none;">
+                        <i class="fas fa-map-pin"></i>
+                        <span class="location-text">Loading location...</span>
+                    </div>
+
+                    <div id="mapContainer" class="map-container"></div>
+
+                    <div class="form-row coordinates-row">
+                        <div class="form-group">
+                            <label for="latitude">
+                                <i class="fas fa-compass"></i> Latitude *
+                            </label>
+                            <input type="number" id="latitude" placeholder="-1.2345" step="0.000001" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="longitude">
+                                <i class="fas fa-compass"></i> Longitude *
+                            </label>
+                            <input type="number" id="longitude" placeholder="36.7890" step="0.000001" required>
+                        </div>
+                    </div>
+
+                    <div class="location-instructions">
+                        <i class="fas fa-info-circle"></i>
+                        <p>Click on the map, use GPS, or enter coordinates manually. Location will be automatically detected.</p>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeProjectModal()">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check"></i> Create Project
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>🌿 RegenArdhi</h3>
+                <p>AI-powered land restoration for a sustainable future</p>
+            </div>
+            <div class="footer-section">
+                <h4>Quick Links</h4>
+                <a href="#about">About Us</a>
+                <a href="#contact">Contact</a>
+                <a href="#privacy">Privacy Policy</a>
+            </div>
+            <div class="footer-section">
+                <h4>Connect</h4>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-twitter"></i></a>
+                    <a href="#"><i class="fab fa-facebook"></i></a>
+                    <a href="#"><i class="fab fa-linkedin"></i></a>
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>© 2025 RegenArdhi • Building a greener future through AI-powered land restoration</p>
+        </div>
+    </footer>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="{{ url_for('static', filename='js/projects.js') }}"></script>
+</body>
+</html>

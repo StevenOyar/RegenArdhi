@@ -1,0 +1,415 @@
+/* ===============================
+   RegenArdhi - Smart Land Restoration
+   Clean UI + Button Animations + Responsive Menu
+   =============================== */
+
+/* ---------- Global Styles ---------- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  background-color: #f8f9f4;
+  color: #222;
+  line-height: 1.6;
+  scroll-behavior: smooth;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+  transition: 0.3s ease;
+}
+
+a:hover {
+  color: #2e7d32;
+}
+
+/* ---------- Navbar ---------- */
+header {
+  background-color: #1b5e20;
+  color: #fff;
+  padding: 1rem 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  animation: fadeIn 0.8s ease-in-out;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logo {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.nav-links {
+  list-style: none;
+  display: flex;
+  gap: 1.5rem;
+  transition: transform 0.4s ease-in-out;
+}
+
+.nav-links a {
+  color: #fff;
+  font-weight: 500;
+  position: relative;
+}
+
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  width: 0;
+  height: 2px;
+  background-color: #c8e6c9;
+  transition: width 0.3s ease;
+}
+
+.nav-links a:hover::after {
+  width: 100%;
+}
+
+/* ---------- Action Buttons ---------- */
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.btn {
+  background-color: #fff;
+  color: #2e7d32;
+  padding: 0.8rem 1.5rem;
+  border-radius: 25px;
+  font-weight: 600;
+  display: inline-block;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  animation: pulse 2s infinite;
+}
+
+.btn:hover {
+  background-color: #c8e6c9;
+  color: #1b5e20;
+  transform: translateY(-2px) scale(1.05);
+}
+
+/* Login Button */
+.login-btn {
+  background-color: transparent;
+  border: 2px solid #fff;
+  color: #fff;
+}
+
+.login-btn:hover {
+  background-color: #fff;
+  color: #1b5e20;
+}
+
+/* Mobile Menu Button */
+.menu-toggle {
+  display: none;
+  font-size: 1.8rem;
+  cursor: pointer;
+  color: #fff;
+}
+
+/* ---------- Hero Section ---------- */
+.hero {
+  background: linear-gradient(to right, #2e7d32, #66bb6a);
+  color: #fff;
+  text-align: center;
+  padding: 5rem 2rem;
+  animation: fadeInUp 1s ease-in-out;
+}
+
+.hero-content h2 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.hero-content p {
+  font-size: 1.1rem;
+  max-width: 600px;
+  margin: 0 auto 1.5rem;
+}
+
+/* ---------- Section Styles ---------- */
+.section {
+  padding: 4rem 2rem;
+  animation: fadeIn 1.2s ease-in-out;
+}
+
+.section.alt-bg {
+  background-color: #e8f5e9;
+}
+
+.section-title {
+  text-align: center;
+  font-size: 2rem;
+  margin-bottom: 2rem;
+  color: #1b5e20;
+}
+
+.container {
+  max-width: 1100px;
+  margin: auto;
+}
+
+/* ---------- Features Section ---------- */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.feature-card {
+  background: #fff;
+  padding: 2rem;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+.feature-card i {
+  font-size: 2rem;
+  color: #2e7d32;
+  margin-bottom: 1rem;
+}
+
+/* ---------- Impact Section ---------- */
+.impact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  text-align: center;
+}
+
+.impact-card {
+  background: #fff;
+  border-left: 5px solid #2e7d32;
+  padding: 1.5rem;
+  border-radius: 10px;
+  transition: transform 0.3s ease;
+}
+
+.impact-card:hover {
+  transform: translateY(-5px);
+}
+
+.impact-card h3 {
+  font-size: 1.5rem;
+  color: #2e7d32;
+}
+
+/* ---------- Community Section ---------- */
+.lead {
+  text-align: center;
+  max-width: 700px;
+  margin: 0 auto 2rem;
+}
+
+.community-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.community-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.community-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+.community-card i {
+  font-size: 2rem;
+  color: #388e3c;
+  margin-bottom: 1rem;
+}
+
+/* ---------- Contact Section ---------- */
+.cta-actions {
+  text-align: center;
+  margin-top: 1.5rem;
+}
+
+/* ---------- Footer ---------- */
+footer {
+  background-color: #1b5e20;
+  color: #fff;
+  padding: 2rem;
+  margin-top: 3rem;
+  animation: fadeInUp 1s ease-in-out;
+}
+
+.footer-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.footer-logo h2 {
+  font-size: 1.5rem;
+}
+
+.footer-links ul,
+.footer-social ul {
+  list-style: none;
+  padding: 0;
+}
+
+.footer-links ul li,
+.footer-social ul li {
+  margin-bottom: 0.5rem;
+}
+
+.footer-links a {
+  color: #c8e6c9;
+}
+
+.footer-links a:hover {
+  color: #fff;
+}
+
+.footer-social ul {
+  display: flex;
+  gap: 1rem;
+}
+
+.footer-social a {
+  color: #c8e6c9;
+  font-size: 1.2rem;
+  transition: transform 0.3s ease;
+}
+
+.footer-social a:hover {
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.footer-note {
+  text-align: center;
+  margin-top: 2rem;
+  font-size: 0.9rem;
+  color: #c8e6c9;
+}
+
+/* ---------- Floating Get Started Button ---------- */
+.floating-btn {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  background-color: #4caf50;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 0.8rem 1.6rem;
+  border-radius: 30px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  transition: opacity 0.4s ease, transform 0.3s ease, background-color 0.3s;
+  opacity: 0;
+  transform: translateY(40px);
+  pointer-events: none;
+  z-index: 999;
+}
+
+.floating-btn.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.floating-btn:hover {
+  background-color: #43a047;
+  transform: scale(1.05);
+}
+
+/* ---------- Animations ---------- */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+  .menu-toggle {
+    display: block;
+  }
+
+  .nav-links {
+    position: absolute;
+    top: 70px;
+    right: 0;
+    background-color: #1b5e20;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1.5rem 0;
+    transform: translateY(-200%);
+    opacity: 0;
+  }
+
+  .nav-links.active {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  .nav-actions {
+    display: none;
+  }
+
+  .footer-container {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .hero-content h2 {
+    font-size: 2rem;
+  }
+}
