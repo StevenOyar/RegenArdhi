@@ -18,6 +18,7 @@ def get_mail():
 
 @main.route('/')
 def home():
+    """Home page route"""
     return render_template('index.html')
 
 @main.route('/register', methods=['GET', 'POST'])
@@ -303,11 +304,12 @@ def reset_password_confirm(token):
         print(f"Password reset confirm error: {e}")
         return redirect(url_for('main.reset_password'))
 
-# Route to access projects (handled by projects blueprint)
+# FIXED: Redirect to the projects blueprint instead of creating a loop
 @main.route('/projects')
 def projects():
     """Redirect to projects blueprint"""
     if 'user_id' not in session:
         flash('Please login to access projects', 'warning')
         return redirect(url_for('main.login'))
+    # Redirect to the projects blueprint (projects.projects), NOT main.projects
     return redirect(url_for('projects.projects'))
