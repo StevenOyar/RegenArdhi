@@ -14,25 +14,28 @@
         <nav class="navbar">
             <div class="logo-container">
                 <span class="logo-icon">🌿</span>
-                <h1 class="logo"><a href="{{ url_for('main.home') }}">RegenArdhi</a></h1>
+                <h1 class="logo"><a href="/">RegenArdhi</a></h1>
             </div>
             <ul class="nav-links" id="navLinks">
-                <li><a href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
-                <li><a href="{{ url_for('main.projects') }}" class="active">Projects</a></li>
-                <li><a href="#monitoring">Monitoring</a></li>
-                <li><a href="#insights">Insights</a></li>
+                <li><a href="/dashboard">Dashboard</a></li>
+                <a href="{{ url_for('projects.projects') }}">Projects</a>
+                <li><a href="/monitoring">Monitoring</a></li>
+                <li><a href="/insights">Insights</a></li>
             </ul>
             <div class="nav-actions">
+                <button class="btn btn-primary" id="quickCreateBtn">
+                    <i class="fas fa-bolt"></i> Quick Create
+                </button>
                 <div class="user-menu">
                     <button class="user-btn" id="userMenuBtn">
                         <i class="fas fa-user-circle"></i>
-                        <span>{{ user.first_name }}</span>
+                        <span id="userName">{{ user.first_name }}</span>
                         <i class="fas fa-chevron-down"></i>
                     </button>
                     <div class="dropdown-menu" id="userDropdown">
-                        <a href="#profile"><i class="fas fa-user"></i> Profile</a>
-                        <a href="#settings"><i class="fas fa-cog"></i> Settings</a>
-                        <a href="{{ url_for('main.logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                        <a href="/profile"><i class="fas fa-user"></i> Profile</a>
+                        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+                        <a href="{{ url_for('main.logout') }}"><i class="fas fa-sign-out-alt"></i>Logout</a>
                     </div>
                 </div>
             </div>
@@ -44,72 +47,107 @@
 
     <!-- Main Content -->
     <main class="projects-main">
-        <div class="container">
-            <!-- Page Header with Quick Actions -->
-            <section class="page-header">
-                <div class="header-content">
-                    <h1><i class="fas fa-leaf"></i> Land Restoration Projects</h1>
-                    <p>AI-powered analysis with GPS-enabled quick creation</p>
+        <!-- Stats Bar -->
+        <section class="stats-bar">
+            <div class="stat-item">
+                <i class="fas fa-project-diagram"></i>
+                <div>
+                    <span class="stat-value" id="totalProjects">0</span>
+                    <span class="stat-label">Total Projects</span>
                 </div>
-                <div class="header-actions">
-                    <button class="btn btn-success" id="quickCreateBtn" title="Create project using your current location">
-                        <i class="fas fa-bolt"></i> Quick Create
-                    </button>
-                    <button class="btn btn-primary" id="newProjectBtn">
-                        <i class="fas fa-plus"></i> New Project
-                    </button>
+            </div>
+            <div class="stat-item">
+                <i class="fas fa-play-circle"></i>
+                <div>
+                    <span class="stat-value" id="activeProjects">0</span>
+                    <span class="stat-label">Active</span>
                 </div>
-            </section>
+            </div>
+            <div class="stat-item">
+                <i class="fas fa-globe-africa"></i>
+                <div>
+                    <span class="stat-value" id="totalArea">0</span>
+                    <span class="stat-label">Hectares</span>
+                </div>
+            </div>
+            <div class="stat-item">
+                <i class="fas fa-map-marker-alt"></i>
+                <div>
+                    <span class="stat-value" id="totalLocations">0</span>
+                    <span class="stat-label">Locations</span>
+                </div>
+            </div>
+        </section>
 
-            <!-- Quick Stats -->
-            <section class="quick-stats">
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
-                        <i class="fas fa-project-diagram"></i>
-                    </div>
-                    <div class="stat-content">
-                        <span class="stat-label">Active Projects</span>
-                        <span class="stat-value" id="activeCount">0</span>
+        <!-- Main Layout: Sidebar + Map -->
+        <section class="main-layout">
+            <!-- Left Sidebar: Latest Projects -->
+            <aside class="projects-sidebar">
+                <div class="sidebar-header">
+                    <h2><i class="fas fa-star"></i> Latest Projects</h2>
+                    <button class="btn-icon" id="viewAllBtn" title="View All Projects">
+                        <i class="fas fa-th-list"></i>
+                    </button>
+                </div>
+                
+                <div id="latestProjects" class="latest-projects-list">
+                    <div class="loading-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Loading projects...</p>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%)">
-                        <i class="fas fa-globe-africa"></i>
-                    </div>
-                    <div class="stat-content">
-                        <span class="stat-label">Total Area</span>
-                        <span class="stat-value" id="totalArea">0</span>
-                        <span class="stat-unit">hectares</span>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <div class="stat-content">
-                        <span class="stat-label">Average Progress</span>
-                        <span class="stat-value" id="avgProgress">0</span>
-                        <span class="stat-unit">%</span>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%)">
-                        <i class="fas fa-exclamation-triangle"></i>
-                    </div>
-                    <div class="stat-content">
-                        <span class="stat-label">Active Alerts</span>
-                        <span class="stat-value alert-count" id="alertCount">0</span>
-                    </div>
-                </div>
-            </section>
 
-            <!-- Filter & Search -->
-            <section class="filter-section">
-                <div class="search-box">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="searchProjects" placeholder="Search projects...">
+                <button class="btn btn-success btn-block" id="newProjectBtn">
+                    <i class="fas fa-plus"></i> New Project
+                </button>
+            </aside>
+
+            <!-- Right Side: Interactive Map -->
+            <div class="map-container">
+                <div class="map-header">
+                    <h2><i class="fas fa-map"></i> Projects Map</h2>
+                    <div class="map-controls">
+                        <button class="btn-icon" onclick="centerMap()" title="Center Map">
+                            <i class="fas fa-crosshairs"></i>
+                        </button>
+                        <button class="btn-icon" onclick="toggleFullscreen()" title="Fullscreen">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                    </div>
                 </div>
-                <div class="filter-controls">
+                <div id="projectsMap" class="map"></div>
+                <div class="map-legend">
+                    <div class="legend-item">
+                        <span class="marker-dot" style="background: #10b981;"></span>
+                        <span>Active</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="marker-dot" style="background: #3b82f6;"></span>
+                        <span>Planning</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="marker-dot" style="background: #8b5cf6;"></span>
+                        <span>Completed</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- All Projects Modal -->
+        <div class="modal" id="allProjectsModal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2><i class="fas fa-th-list"></i> All Projects</h2>
+                    <button class="btn-close" id="closeAllProjectsBtn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="modal-filters">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchProjects" placeholder="Search projects...">
+                    </div>
                     <select id="filterStatus" class="filter-select">
                         <option value="">All Status</option>
                         <option value="planning">Planning</option>
@@ -125,147 +163,110 @@
                         <option value="agroforestry">Agroforestry</option>
                     </select>
                 </div>
-            </section>
 
-            <!-- Projects Grid -->
-            <section class="projects-container">
-                <div id="projectsGrid" class="projects-grid">
-                    <div class="loading-spinner">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <p>Loading projects...</p>
+                <div class="modal-body">
+                    <div id="allProjectsGrid" class="all-projects-grid">
+                        <div class="loading-state">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Loading projects...</p>
+                        </div>
                     </div>
                 </div>
-            </section>
+            </div>
+        </div>
+
+        <!-- Create/Edit Project Modal -->
+        <div class="modal" id="projectModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modalTitle"><i class="fas fa-plus"></i> Create New Project</h2>
+                    <button class="btn-close" id="closeProjectModalBtn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="modal-body">
+                    <form id="projectForm">
+                        <input type="hidden" id="projectId" value="">
+                        
+                        <div class="form-group">
+                            <label><i class="fas fa-heading"></i> Project Name *</label>
+                            <input type="text" id="projectName" required placeholder="e.g., Machakos Reforestation">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label><i class="fas fa-tag"></i> Project Type *</label>
+                                <select id="projectType" required>
+                                    <option value="">Select type...</option>
+                                    <option value="reforestation">🌲 Reforestation</option>
+                                    <option value="soil-conservation">🏔️ Soil Conservation</option>
+                                    <option value="watershed">💧 Watershed</option>
+                                    <option value="agroforestry">🌾 Agroforestry</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label><i class="fas fa-ruler-combined"></i> Area (hectares) *</label>
+                                <input type="number" id="projectArea" required step="0.1" min="0.1" placeholder="50">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label><i class="fas fa-align-left"></i> Description</label>
+                            <textarea id="projectDescription" rows="3" placeholder="Describe your project..."></textarea>
+                        </div>
+
+                        <div class="location-section">
+                            <div class="location-header">
+                                <h3><i class="fas fa-map-marker-alt"></i> Location</h3>
+                                <button type="button" class="btn btn-outline" onclick="useCurrentLocation()">
+                                    <i class="fas fa-crosshairs"></i> Use GPS
+                                </button>
+                            </div>
+
+                            <div id="modalMap" class="modal-map"></div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Latitude *</label>
+                                    <input type="number" id="latitude" required step="0.000001" placeholder="-1.2345">
+                                </div>
+                                <div class="form-group">
+                                    <label>Longitude *</label>
+                                    <input type="number" id="longitude" required step="0.000001" placeholder="36.7890">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-outline" onclick="closeProjectModal()">
+                                Cancel
+                            </button>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-check"></i> <span id="submitBtnText">Create Project</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Project Details Modal -->
+        <div class="modal" id="projectDetailsModal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2 id="detailsProjectName"><i class="fas fa-info-circle"></i> Project Details</h2>
+                    <button class="btn-close" id="closeDetailsModalBtn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body" id="projectDetailsContent">
+                    <!-- Content loaded dynamically -->
+                </div>
+            </div>
         </div>
     </main>
-
-    <!-- Simplified Project Creation Modal -->
-    <div class="modal" id="projectModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-map-marked-alt"></i> Create Project</h2>
-                <button class="close-modal" id="closeModalBtn">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <form id="projectForm" class="project-form" style="padding: 2rem;">
-                <div class="form-row">
-                    <div class="form-group full">
-                        <label for="projectName">
-                            <i class="fas fa-heading"></i> Project Name *
-                        </label>
-                        <input type="text" id="projectName" placeholder="e.g., Machakos Reforestation Initiative" required>
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="projectType">
-                            <i class="fas fa-tag"></i> Project Type *
-                        </label>
-                        <select id="projectType" required>
-                            <option value="">Select type...</option>
-                            <option value="reforestation">🌲 Reforestation</option>
-                            <option value="soil-conservation">🏔️ Soil Conservation</option>
-                            <option value="watershed">💧 Watershed Restoration</option>
-                            <option value="agroforestry">🌾 Agroforestry</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="projectArea">
-                            <i class="fas fa-ruler-combined"></i> Area (hectares) *
-                        </label>
-                        <input type="number" id="projectArea" placeholder="e.g., 50" step="0.1" min="0.1" required>
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group full">
-                        <label for="projectDescription">
-                            <i class="fas fa-align-left"></i> Description
-                        </label>
-                        <textarea id="projectDescription" placeholder="Describe your land restoration goals..." rows="3"></textarea>
-                    </div>
-                </div>
-
-                <div class="location-section">
-                    <div class="location-header">
-                        <h3><i class="fas fa-map-marker-alt"></i> Project Location</h3>
-                        <button type="button" class="btn btn-outline" id="useGPSBtn" onclick="useCurrentLocation()" style="display: none;">
-                            <i class="fas fa-crosshairs"></i> Use My Location
-                        </button>
-                    </div>
-
-                    <!-- Location Display -->
-                    <div id="locationDisplay" class="location-display" style="display: none;">
-                        <i class="fas fa-map-pin"></i>
-                        <span class="location-text">Loading location...</span>
-                    </div>
-
-                    <div id="mapContainer" class="map-container"></div>
-
-                    <div class="form-row coordinates-row">
-                        <div class="form-group">
-                            <label for="latitude">
-                                <i class="fas fa-compass"></i> Latitude *
-                            </label>
-                            <input type="number" id="latitude" placeholder="-1.2345" step="0.000001" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="longitude">
-                                <i class="fas fa-compass"></i> Longitude *
-                            </label>
-                            <input type="number" id="longitude" placeholder="36.7890" step="0.000001" required>
-                        </div>
-                    </div>
-
-                    <div class="location-instructions">
-                        <i class="fas fa-info-circle"></i>
-                        <p>Click on the map, use GPS, or enter coordinates manually. Location will be automatically detected.</p>
-                    </div>
-                </div>
-
-                <div class="form-actions">
-                    <button type="button" class="btn btn-outline" onclick="closeProjectModal()">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-check"></i> Create Project
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-content">
-            <div class="footer-section">
-                <h3>🌿 RegenArdhi</h3>
-                <p>AI-powered land restoration for a sustainable future</p>
-            </div>
-            <div class="footer-section">
-                <h4>Quick Links</h4>
-                <a href="#about">About Us</a>
-                <a href="#contact">Contact</a>
-                <a href="#privacy">Privacy Policy</a>
-            </div>
-            <div class="footer-section">
-                <h4>Connect</h4>
-                <div class="social-links">
-                    <a href="#"><i class="fab fa-twitter"></i></a>
-                    <a href="#"><i class="fab fa-facebook"></i></a>
-                    <a href="#"><i class="fab fa-linkedin"></i></a>
-                    <a href="#"><i class="fab fa-instagram"></i></a>
-                </div>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <p>© 2025 RegenArdhi • Building a greener future through AI-powered land restoration</p>
-        </div>
-    </footer>
 
     <!-- Notification Container -->
     <div id="notificationContainer"></div>
