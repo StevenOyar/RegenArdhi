@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Insights | RegenArdhi</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/insights.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}" />
+</head>
+<body>
+    <!-- Navbar -->
+    <header>
+        <nav class="navbar">
+            <div class="logo-container">
+                <span class="logo-icon">🌿</span>
+                <h1 class="logo"><a href="/">RegenArdhi</a></h1>
+            </div>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/projects">Projects</a></li>
+                <li><a href="/monitoring">Monitoring</a></li>
+                <li><a href="/insights" class="active">Insights</a></li>
+            </ul>
+            <div class="nav-actions">
+                <div class="user-menu">
+                    <button class="user-btn" id="userMenuBtn">
+                        <i class="fas fa-user-circle"></i>
+                        <span id="userName">{{ user.first_name }}</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="dropdown-menu" id="userDropdown">
+                        <a href="/profile"><i class="fas fa-user"></i> Profile</a>
+                        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+                        <a href="{{ url_for('main.logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                    </div>
+                </div>
+            </div>
+            <button class="mobile-toggle" id="mobileToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="insights-main">
+        <!-- Header Section -->
+        <section class="insights-header">
+            <div class="header-content">
+                <h1><i class="fas fa-brain"></i> AI-Powered Insights</h1>
+                <p>Data-driven intelligence for sustainable land restoration</p>
+            </div>
+            <div class="header-controls">
+                <select id="projectSelector" class="project-select">
+                    <option value="">Select a project...</option>
+                </select>
+                <select id="periodSelector" class="period-select">
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d" selected>Last 30 days</option>
+                    <option value="90d">Last 90 days</option>
+                    <option value="180d">Last 6 months</option>
+                </select>
+                <button class="btn-refresh" id="refreshBtn">
+                    <i class="fas fa-sync"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- Main Grid Layout -->
+        <div class="insights-grid">
+            <!-- Left Column: Charts -->
+            <div class="charts-column">
+                <!-- NDVI Trend Card -->
+                <div class="insight-card chart-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-line"></i> Vegetation Health Trend</h3>
+                        <div class="card-actions">
+                            <button class="btn-icon-sm" onclick="downloadChart('ndviChart')">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="ndviChart" class="chart-canvas"></canvas>
+                    </div>
+                    <div class="card-footer">
+                        <div class="chart-legend">
+                            <div class="legend-item">
+                                <span class="legend-dot" style="background: #10b981;"></span>
+                                <span>NDVI Index</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot" style="background: #3b82f6;"></span>
+                                <span>Canopy Cover %</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Climate Impact Card -->
+                <div class="insight-card chart-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-cloud-sun-rain"></i> Climate & Rainfall Pattern</h3>
+                        <div class="card-actions">
+                            <button class="btn-icon-sm" onclick="downloadChart('climateChart')">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="climateChart" class="chart-canvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Soil Health Card -->
+                <div class="insight-card chart-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-mountain"></i> Soil Health Metrics</h3>
+                        <div class="card-actions">
+                            <button class="btn-icon-sm" onclick="downloadChart('soilChart')">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="soilChart" class="chart-canvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center Column: AI Insights -->
+            <div class="insights-column">
+                <div class="insight-card insights-list-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-lightbulb"></i> AI Insights & Recommendations</h3>
+                        <span class="insight-count" id="insightCount">0</span>
+                    </div>
+                    <div class="card-body" id="insightsList">
+                        <div class="loading-state">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Analyzing your data...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: WhatsApp-Style RegenAI Chat -->
+            <div class="chat-column">
+                <div class="whatsapp-chat-container">
+                    <!-- Chat Header - WhatsApp Style -->
+                    <div class="whatsapp-header">
+                        <div class="header-left">
+                            <button class="back-btn" onclick="closeChatPanel()">
+                                <i class="fas fa-arrow-left"></i>
+                            </button>
+                            <div class="chat-avatar">
+                                <div class="avatar-image">
+                                    <i class="fas fa-seedling"></i>
+                                </div>
+                                <div class="online-indicator"></div>
+                            </div>
+                            <div class="chat-info">
+                                <h3 class="chat-name">RegenAI Assistant</h3>
+                                <p class="chat-status">
+                                    <span class="status-typing" id="typingIndicator" style="display: none;">
+                                        typing<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+                                    </span>
+                                    <span class="status-online" id="onlineStatus">online</span>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="header-actions">
+                            <button class="header-action-btn" onclick="startVoiceCall()" title="Voice call">
+                                <i class="fas fa-phone"></i>
+                            </button>
+                            <button class="header-action-btn" onclick="startVideoCall()" title="Video call">
+                                <i class="fas fa-video"></i>
+                            </button>
+                            <button class="header-action-btn" onclick="toggleChatMenu()" title="More options">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Chat Menu Dropdown -->
+                    <div class="chat-menu-dropdown" id="chatMenuDropdown">
+                        <div class="menu-item" onclick="viewChatInfo()">
+                            <i class="fas fa-info-circle"></i>
+                            <span>Chat info</span>
+                        </div>
+                        <div class="menu-item" onclick="selectMessages()">
+                            <i class="fas fa-check-double"></i>
+                            <span>Select messages</span>
+                        </div>
+                        <div class="menu-item" onclick="muteNotifications()">
+                            <i class="fas fa-bell-slash"></i>
+                            <span>Mute notifications</span>
+                        </div>
+                        <div class="menu-item" onclick="clearChat()">
+                            <i class="fas fa-trash"></i>
+                            <span>Clear chat</span>
+                        </div>
+                        <div class="menu-item" onclick="exportChat()">
+                            <i class="fas fa-download"></i>
+                            <span>Export chat</span>
+                        </div>
+                    </div>
+
+                    <!-- Chat Background Pattern (WhatsApp style) -->
+                    <div class="chat-background"></div>
+
+                    <!-- Messages Container -->
+                    <div class="whatsapp-messages" id="chatMessagesContainer">
+                        <!-- Date Divider -->
+                        <div class="date-divider">
+                            <span>TODAY</span>
+                        </div>
+
+                        <!-- Welcome Message -->
+                        <div class="message-wrapper received-wrapper" id="welcomeMessage">
+                            <div class="message received">
+                                <div class="message-content">
+                                    <p class="message-text">
+                                        👋 Hi! I'm <strong>RegenAI</strong>, your intelligent assistant for land restoration.
+                                        <br><br>
+                                        I can help you with:
+                                        <br>🌿 Vegetation health analysis
+                                        <br>📊 Data interpretation
+                                        <br>🌱 Restoration recommendations
+                                        <br>📅 Seasonal planning
+                                        <br><br>
+                                        <em>What would you like to know?</em>
+                                    </p>
+                                    <div class="message-meta">
+                                        <span class="message-time" id="welcomeTime">9:00 AM</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Replies (WhatsApp Style) -->
+                    <div class="quick-replies-container" id="quickRepliesContainer">
+                        <button class="quick-reply-btn" onclick="sendQuickMessage('What is my current NDVI?')">
+                            <i class="fas fa-leaf"></i>
+                            What's my NDVI?
+                        </button>
+                        <button class="quick-reply-btn" onclick="sendQuickMessage('When is the best time to plant?')">
+                            <i class="fas fa-calendar-alt"></i>
+                            Best planting time?
+                        </button>
+                        <button class="quick-reply-btn" onclick="sendQuickMessage('How can I improve soil health?')">
+                            <i class="fas fa-seedling"></i>
+                            Soil health tips
+                        </button>
+                        <button class="quick-reply-btn" onclick="sendQuickMessage('Show restoration techniques')">
+                            <i class="fas fa-tasks"></i>
+                            Restoration guide
+                        </button>
+                    </div>
+
+                    <!-- Input Container (WhatsApp Style) -->
+                    <div class="whatsapp-input-container">
+                        <!-- Emoji Picker (Hidden by default) -->
+                        <div class="emoji-picker" id="emojiPicker" style="display: none;">
+                            <div class="emoji-header">
+                                <div class="emoji-tabs">
+                                    <button class="emoji-tab active" data-category="recent">⏱️</button>
+                                    <button class="emoji-tab" data-category="smileys">😊</button>
+                                    <button class="emoji-tab" data-category="nature">🌿</button>
+                                    <button class="emoji-tab" data-category="objects">⚡</button>
+                                </div>
+                            </div>
+                            <div class="emoji-grid" id="emojiGrid">
+                                <button class="emoji" onclick="insertEmoji('😊')">😊</button>
+                                <button class="emoji" onclick="insertEmoji('👍')">👍</button>
+                                <button class="emoji" onclick="insertEmoji('🌿')">🌿</button>
+                                <button class="emoji" onclick="insertEmoji('🌱')">🌱</button>
+                                <button class="emoji" onclick="insertEmoji('💚')">💚</button>
+                                <button class="emoji" onclick="insertEmoji('✅')">✅</button>
+                                <button class="emoji" onclick="insertEmoji('🎉')">🎉</button>
+                                <button class="emoji" onclick="insertEmoji('💪')">💪</button>
+                                <button class="emoji" onclick="insertEmoji('🌍')">🌍</button>
+                                <button class="emoji" onclick="insertEmoji('☀️')">☀️</button>
+                                <button class="emoji" onclick="insertEmoji('🌧️')">🌧️</button>
+                                <button class="emoji" onclick="insertEmoji('🌾')">🌾</button>
+                                <button class="emoji" onclick="insertEmoji('🌳')">🌳</button>
+                                <button class="emoji" onclick="insertEmoji('🌲')">🌲</button>
+                                <button class="emoji" onclick="insertEmoji('🔥')">🔥</button>
+                                <button class="emoji" onclick="insertEmoji('❤️')">❤️</button>
+                            </div>
+                        </div>
+
+                        <!-- Main Input Area -->
+                        <div class="input-wrapper">
+                            <button class="input-action-btn" onclick="toggleEmojiPicker()" title="Emoji">
+                                <i class="fas fa-smile"></i>
+                            </button>
+                            
+                            <div class="input-field-wrapper">
+                                <textarea 
+                                    id="messageInput" 
+                                    class="message-input" 
+                                    placeholder="Type a message"
+                                    rows="1"
+                                    maxlength="5000"
+                                    onkeydown="handleInputKeydown(event)"
+                                    oninput="handleInputChange()"
+                                ></textarea>
+                            </div>
+
+                            <button class="input-action-btn" onclick="attachFile()" title="Attach">
+                                <i class="fas fa-paperclip"></i>
+                            </button>
+                            <input type="file" id="fileInput" style="display: none;" accept="image/*,.pdf,.doc,.docx" multiple onchange="handleFileSelect(event)">
+
+                            <!-- Send/Voice Button -->
+                            <button class="send-btn" id="sendButton" onclick="sendMessage()" style="display: none;">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                            <button class="voice-btn" id="voiceButton" onclick="startVoiceRecording()">
+                                <i class="fas fa-microphone"></i>
+                            </button>
+                        </div>
+
+                        <!-- Voice Recording UI -->
+                        <div class="voice-recording-ui" id="voiceRecordingUI" style="display: none;">
+                            <div class="recording-content">
+                                <button class="cancel-recording-btn" onclick="cancelVoiceRecording()">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                <div class="recording-info">
+                                    <div class="recording-animation">
+                                        <span class="recording-dot"></span>
+                                    </div>
+                                    <span class="recording-time" id="recordingTime">0:00</span>
+                                    <span class="recording-text">Recording audio...</span>
+                                </div>
+                                <button class="send-voice-btn" onclick="sendVoiceMessage()">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- File Preview -->
+                        <div class="file-preview-container" id="filePreviewContainer" style="display: none;">
+                            <div class="file-preview-header">
+                                <span>Selected files</span>
+                                <button class="close-preview-btn" onclick="clearFilePreview()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="file-preview-list" id="filePreviewList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/insights.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>
