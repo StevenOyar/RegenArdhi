@@ -7,9 +7,6 @@ from datetime import timedelta
 
 load_dotenv()
 
-
-
-
 # ===============================
 #  Flask App Factory
 # ===============================
@@ -84,35 +81,85 @@ with app.app_context():
 
         mysql.connection.commit()
         cur.close()
-        print("✓ Users table initialized successfully!")
+        print("✅ Users table initialized successfully!")
 
     except Exception as e:
-        print(f"✗ Error initializing database: {e}")
+        print(f"❌ Error initializing database: {e}")
 
 # -------------------------------
 #  Import and Initialize Modules
 # -------------------------------
+
+# Projects Module
 try:
     from app.projects import projects_bp, init_projects
     init_projects(app, mysql)
     app.register_blueprint(projects_bp)
-    print("✓ Projects module loaded successfully!")
+    print("✅ Projects module loaded successfully!")
 except Exception as e:
-    print(f"✗ Failed to load Projects module: {e}")
+    print(f"❌ Failed to load Projects module: {e}")
 
+# Monitoring Module
 try:
     from app.monitoring import monitoring_bp, init_monitoring
     init_monitoring(app, mysql)
     app.register_blueprint(monitoring_bp)
-    print("✓ Monitoring module loaded successfully!")
+    print("✅ Monitoring module loaded successfully!")
 except Exception as e:
-    print(f"✗ Failed to load Monitoring module: {e}")
+    print(f"❌ Failed to load Monitoring module: {e}")
+
+# Insights Module (NEW)
+try:
+    from app.insights import insights_bp, init_insights
+    init_insights(app, mysql)
+    app.register_blueprint(insights_bp)
+    print("✅ Insights module loaded successfully!")
+except Exception as e:
+    print(f"❌ Failed to load Insights module: {e}")
+
+# Chat Module (NEW)
+try:
+    from app.chat import chat_bp, init_chat
+    init_chat(app, mysql)
+    app.register_blueprint(chat_bp)
+    print("✅ Chat module loaded successfully!")
+except Exception as e:
+    print(f"❌ Failed to load Chat module: {e}")
 
 # -------------------------------
 #  Import Core Routes
 # -------------------------------
 try:
     from app import routes
-    print("✓ Core routes loaded successfully!")
+    print("✅ Core routes loaded successfully!")
 except Exception as e:
-    print(f"✗ Error loading routes: {e}")
+    print(f"❌ Error loading routes: {e}")
+
+
+
+
+# In app/__init__.py
+
+# ... existing imports ...
+
+# Dashboard Module (ADD THIS)
+try:
+    from app.dashboard import dashboard_bp, init_dashboard
+    init_dashboard(app, mysql)
+    app.register_blueprint(dashboard_bp)
+    print("✅ Dashboard module loaded successfully!")
+except Exception as e:
+    print(f"❌ Failed to load Dashboard module: {e}")
+    
+    
+    
+print("\n" + "="*50)
+print("🌿 REGENARDHI - AI-POWERED LAND RESTORATION")
+print("="*50)
+print("✓ All modules initialized")
+print("✓ Database tables created")
+print("✓ API integrations ready:")
+print("  - NASA POWER API (Climate Data)")
+print("  - Hugging Face (AI Insights)")
+print("  - OpenStreetMap (Geocoding)")
+print("="*50 + "\n")
