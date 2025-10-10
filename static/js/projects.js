@@ -1,166 +1,40 @@
-// projects.js - Enhanced with GPS and Real API Integration
+// ========================================
+// REGENARDHI - MAP-CENTRIC REDESIGN JS
+// Clean, organized, and efficient
+// ========================================
 
-// Global variables
-let map = null;
-let marker = null;
-let projectsData = [];
-let currentAnalysis = null;
-let gpsWatchId = null;
+// Global State
+const state = {
+    projects: [],
+    filteredProjects: [],
+    selectedProject: null,
+    maps: {
+        main: null,
+        modal: null
+    },
+    markers: {
+        main: [],
+        modal: null
+    },
+    editMode: false
+};
 
-// Initialize on page load
+// ========================
+// INITIALIZATION
+// ========================
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🌿 RegenArdhi Projects - Initializing...');
+    
     initializeNavigation();
+    initializeEventListeners();
+    initializeMainMap();
     loadProjects();
-    setupEventListeners();
     checkGPSAvailability();
 });
 
 // ========================
-// GPS FUNCTIONALITY
-// ========================
-
-function checkGPSAvailability() {
-    if ("geolocation" in navigator) {
-        console.log('✓ GPS available');
-        const gpsBtn = document.getElementById('useGPSBtn');
-        if (gpsBtn) {
-            gpsBtn.style.display = 'inline-flex';
-        }
-    } else {
-        console.log('✗ GPS not available');
-    }
-}
-
-function useCurrentLocation() {
-    const btn = document.getElementById('useGPSBtn');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Getting Location...';
-    }
-    
-    showNotification('📍 Getting your location...', 'info');
-    
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const lat = position.coords.latitude.toFixed(6);
-            const lng = position.coords.longitude.toFixed(6);
-            
-            console.log('GPS Location:', lat, lng);
-            
-            document.getElementById('latitude').value = lat;
-            document.getElementById('longitude').value = lng;
-            
-            updateMapMarker();
-            showNotification('✓ Location detected successfully!', 'success');
-            
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-crosshairs"></i> Use My Location';
-            }
-        },
-        (error) => {
-            console.error('GPS Error:', error);
-            let message = 'Could not get your location';
-            
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    message = 'Location permission denied. Please enable GPS.';
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    message = 'Location information unavailable';
-                    break;
-                case error.TIMEOUT:
-                    message = 'Location request timed out';
-                    break;
-            }
-            
-            showNotification(message, 'error');
-            
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-crosshairs"></i> Use My Location';
-            }
-        },
-        {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        }
-    );
-}
-
-// Make function globally accessible
-window.useCurrentLocation = useCurrentLocation;
-
-// ========================
-// LOCATION CONVERSION
-// ========================
-
-async function getLocationName(latitude, longitude) {
-    // """Convert coordinates to place name using reverse geocoding"""
-    try {
-        // Use OpenStreetMap Nominatim (free, no API key needed)
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&zoom=10`;
-        
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'RegenArdhi/1.0'
-            }
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            const address = data.address || {};
-            
-            // Build location string from address components
-            const parts = [];
-            
-            if (address.town || address.city || address.village) {
-                parts.push(address.town || address.city || address.village);
-            }
-            if (address.county || address.state_district) {
-                parts.push(address.county || address.state_district);
-            }
-            if (address.state) {
-                parts.push(address.state);
-            }
-            if (address.country) {
-                parts.push(address.country);
-            }
-            
-            if (parts.length > 0) {
-                return parts.join(', ');
-            }
-        }
-        
-        // Fallback to coordinates
-        return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-        
-    } catch (error) {
-        console.error('Error getting location name:', error);
-        return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-    }
-}
-
-// Cache for location names to avoid repeated API calls
-const locationCache = {};
-
-async function getLocationNameCached(latitude, longitude) {
-    // """Get location name with caching"""
-    const key = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
-    
-    if (locationCache[key]) {
-        return locationCache[key];
-    }
-    
-    const locationName = await getLocationName(latitude, longitude);
-    locationCache[key] = locationName;
-    return locationName;
-}
-
-// ========================
-// NAVIGATION & UI
+// NAVIGATION
 // ========================
 
 function initializeNavigation() {
@@ -187,383 +61,763 @@ function initializeNavigation() {
     }
 }
 
-function setupEventListeners() {
-    console.log('Setting up event listeners...');
-    
+// ========================
+// EVENT LISTENERS
+// ========================
+
+function initializeEventListeners() {
     // Modal controls
-    const newProjectBtn = document.getElementById('newProjectBtn');
-    const closeModalBtn = document.getElementById('closeModalBtn');
-    const projectModal = document.getElementById('projectModal');
+    document.getElementById('viewAllBtn')?.addEventListener('click', openAllProjectsModal);
+    document.getElementById('closeAllProjectsBtn')?.addEventListener('click', closeAllProjectsModal);
+    document.getElementById('newProjectBtn')?.addEventListener('click', openProjectModal);
+    document.getElementById('closeProjectModalBtn')?.addEventListener('click', closeProjectModal);
+    document.getElementById('closeDetailsModalBtn')?.addEventListener('click', closeDetailsModal);
+    document.getElementById('quickCreateBtn')?.addEventListener('click', handleQuickCreate);
     
-    if (newProjectBtn) {
-        newProjectBtn.addEventListener('click', openProjectModal);
-    }
+    // Form
+    document.getElementById('projectForm')?.addEventListener('submit', handleProjectSubmit);
+    document.getElementById('latitude')?.addEventListener('change', updateModalMarker);
+    document.getElementById('longitude')?.addEventListener('change', updateModalMarker);
     
-    if (closeModalBtn) {
-        closeModalBtn.addEventListener('click', closeProjectModal);
-    }
+    // Filters
+    document.getElementById('searchProjects')?.addEventListener('input', filterProjects);
+    document.getElementById('filterStatus')?.addEventListener('change', filterProjects);
+    document.getElementById('filterType')?.addEventListener('change', filterProjects);
     
-    if (projectModal) {
-        projectModal.addEventListener('click', (e) => {
-            if (e.target === projectModal) closeProjectModal();
+    // Close modals on backdrop click
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.remove('show');
+            }
         });
-    }
-    
-    // Form submission
-    const projectForm = document.getElementById('projectForm');
-    if (projectForm) {
-        projectForm.addEventListener('submit', handleProjectSubmit);
-    }
-    
-    // Quick create button
-    const quickCreateBtn = document.getElementById('quickCreateBtn');
-    if (quickCreateBtn) {
-        quickCreateBtn.addEventListener('click', handleQuickCreate);
-    }
-    
-    // Coordinate inputs
-    const latInput = document.getElementById('latitude');
-    const lonInput = document.getElementById('longitude');
-    
-    if (latInput) latInput.addEventListener('change', updateMapMarker);
-    if (lonInput) lonInput.addEventListener('change', updateMapMarker);
-    
-    // Search and filters
-    const searchInput = document.getElementById('searchProjects');
-    const statusFilter = document.getElementById('filterStatus');
-    const typeFilter = document.getElementById('filterType');
-    
-    if (searchInput) searchInput.addEventListener('input', filterProjects);
-    if (statusFilter) statusFilter.addEventListener('change', filterProjects);
-    if (typeFilter) typeFilter.addEventListener('change', filterProjects);
+    });
 }
 
 // ========================
-// PROJECT LOADING
+// GPS FUNCTIONALITY
+// ========================
+
+function checkGPSAvailability() {
+    if ("geolocation" in navigator) {
+        console.log('✓ GPS available');
+    } else {
+        console.log('✗ GPS not available');
+    }
+}
+
+window.useCurrentLocation = function() {
+    showNotification('📍 Getting your location...', 'info');
+    
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude.toFixed(6);
+            const lng = position.coords.longitude.toFixed(6);
+            
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+            
+            updateModalMarker();
+            showNotification('✓ Location detected successfully!', 'success');
+        },
+        (error) => {
+            let message = 'Could not get your location';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message = 'Location permission denied. Please enable GPS.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message = 'Location information unavailable';
+                    break;
+                case error.TIMEOUT:
+                    message = 'Location request timed out';
+                    break;
+            }
+            showNotification(message, 'error');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+};
+
+// ========================
+// DATA LOADING
 // ========================
 
 async function loadProjects() {
-    console.log('📊 Loading projects from database...');
-    const grid = document.getElementById('projectsGrid');
-    
-    grid.innerHTML = `
-        <div class="loading-spinner">
-            <i class="fas fa-spinner fa-spin"></i>
-            <p>Loading projects...</p>
-        </div>
-    `;
+    console.log('📊 Loading projects...');
     
     try {
         const response = await fetch('/projects/api/list');
         const data = await response.json();
         
-        console.log('📦 Full API Response:', data); // Debug
-        
         if (data.success) {
-            projectsData = data.projects || [];
-            console.log(`✓ Loaded ${projectsData.length} projects`);
+            state.projects = data.projects || [];
+            state.filteredProjects = [...state.projects];
             
-            // Debug: Log first project structure if available
-            if (projectsData.length > 0) {
-                console.log('📋 First project structure:', projectsData[0]);
-                console.log('📋 First project keys:', Object.keys(projectsData[0]));
-            }
-            
-            renderProjects();
+            renderLatestProjects();
             updateStatistics();
+            updateMainMap();
+            
+            console.log(`✓ Loaded ${state.projects.length} projects`);
         } else {
-            console.error('❌ API returned error:', data.error);
             showNotification(data.error || 'Failed to load projects', 'error');
-            showEmptyState();
+            showEmptyState('latestProjects');
         }
     } catch (error) {
-        console.error('❌ Error loading projects:', error);
+        console.error('Error loading projects:', error);
         showNotification('Error connecting to server', 'error');
-        showEmptyState();
+        showEmptyState('latestProjects');
     }
 }
 
-function renderProjects(filteredProjects = null) {
-    const grid = document.getElementById('projectsGrid');
-    const projects = filteredProjects || projectsData;
+// ========================
+// RENDER FUNCTIONS
+// ========================
+
+function renderLatestProjects() {
+    const container = document.getElementById('latestProjects');
+    if (!container) return;
     
-    if (!projects || projects.length === 0) {
-        showEmptyState();
+    const latestProjects = state.projects.slice(0, 4);
+    
+    if (latestProjects.length === 0) {
+        showEmptyState('latestProjects');
         return;
     }
     
-    grid.innerHTML = projects.map(project => createProjectCard(project)).join('');
+    container.innerHTML = latestProjects.map(project => createMiniCard(project)).join('');
     
-    // Add click handlers
-    document.querySelectorAll('.project-card').forEach(card => {
-        card.addEventListener('click', (e) => {
-            if (!e.target.closest('.project-actions')) {
-                const projectId = card.dataset.projectId;
-                viewProjectDetail(projectId);
-            }
-        });
+    // Attach click listeners
+    container.querySelectorAll('.project-card-mini').forEach(card => {
+        const projectId = parseInt(card.dataset.projectId);
+        card.addEventListener('click', () => selectProject(projectId));
     });
 }
 
-function showEmptyState() {
-    const grid = document.getElementById('projectsGrid');
-    grid.innerHTML = `
-        <div class="empty-state">
-            <i class="fas fa-seedling"></i>
-            <h3>No Projects Yet</h3>
-            <p>Start your first land restoration project with just one click</p>
-            <button class="btn btn-primary" onclick="openProjectModal()">
-                <i class="fas fa-plus"></i> Create Project
-            </button>
-        </div>
-    `;
-}
-
-function createProjectCard(project) {
-    console.log('Creating card for project:', project); // Debug log
-    
+function createMiniCard(project) {
     const statusColors = {
-        'planning': '#3498db',
-        'active': '#2ecc71',
-        'completed': '#9b59b6',
-        'paused': '#e67e22'
+        'planning': '#3b82f6',
+        'active': '#10b981',
+        'completed': '#8b5cf6',
+        'paused': '#f59e0b'
     };
     
-    const degradationIcons = {
-        'minimal': '✅',
-        'moderate': '⚠️',
-        'severe': '🔴',
-        'critical': '🚨'
+    const typeIcons = {
+        'reforestation': '🌲',
+        'soil-conservation': '🏔️',
+        'watershed': '💧',
+        'agroforestry': '🌾'
     };
-    
-    // Safely get values with fallbacks
-    const projectName = project.name || 'Unnamed Project';
-    const projectType = project.project_type || 'unknown';
-    const projectStatus = project.status || 'planning';
-    const location = project.location || 'Unknown Location';
-    const areaHectares = project.area_hectares || 0;
-    const climateZone = project.climate_zone || 'N/A';
-    const soilType = project.soil_type || 'N/A';
-    const degradationLevel = project.land_degradation_level || 'unknown';
-    const vegetationIndex = project.vegetation_index !== null && project.vegetation_index !== undefined 
-        ? project.vegetation_index 
-        : 'N/A';
-    const progressPercentage = project.progress_percentage || 0;
-    
-    const degradationIcon = degradationIcons[degradationLevel] || '❓';
-    const statusColor = statusColors[projectStatus] || '#95a5a6';
     
     return `
-        <div class="project-card" data-project-id="${project.id}">
-            <div class="project-header">
-                <div class="project-title">
-                    <h3>${escapeHtml(projectName)}</h3>
-                    <span class="project-type">${formatProjectType(projectType)}</span>
-                </div>
-                <span class="project-status" style="background: ${statusColor}">
-                    ${projectStatus.charAt(0).toUpperCase() + projectStatus.slice(1)}
-                </span>
-            </div>
-            
-            <div class="project-meta">
-                <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(location)}</span>
-                <span><i class="fas fa-ruler-combined"></i> ${parseFloat(areaHectares).toFixed(1)} ha</span>
-            </div>
-            
-            <div class="project-analysis">
-                <div class="analysis-item">
-                    <span class="label">Climate Zone</span>
-                    <span class="value">${climateZone}</span>
-                </div>
-                <div class="analysis-item">
-                    <span class="label">Soil Type</span>
-                    <span class="value">${soilType}</span>
-                </div>
-                <div class="analysis-item">
-                    <span class="label">Degradation</span>
-                    <span class="value">
-                        ${degradationIcon}
-                        ${degradationLevel.charAt(0).toUpperCase() + degradationLevel.slice(1)}
+        <div class="project-card-mini ${state.selectedProject?.id === project.id ? 'selected' : ''}" 
+             data-project-id="${project.id}">
+            <div class="project-card-header-mini">
+                <div>
+                    <h4>${escapeHtml(project.name)}</h4>
+                    <span class="project-status-mini" style="background: ${statusColors[project.status]}">
+                        ${project.status}
                     </span>
                 </div>
-                <div class="analysis-item">
-                    <span class="label">NDVI</span>
-                    <span class="value">${vegetationIndex !== 'N/A' ? parseFloat(vegetationIndex).toFixed(2) : 'N/A'}</span>
+                <div class="project-type-badge">
+                    ${typeIcons[project.project_type] || '🌿'}
                 </div>
             </div>
-            
-            <div class="progress-section">
-                <div class="progress-header">
-                    <span>Progress</span>
-                    <span>${parseInt(progressPercentage)}%</span>
-                </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${parseInt(progressPercentage)}%"></div>
-                </div>
+            <div class="project-meta-mini">
+                <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(project.location || 'Unknown')}</span>
+                <span><i class="fas fa-ruler-combined"></i> ${parseFloat(project.area_hectares || 0).toFixed(1)} ha</span>
+                <span><i class="fas fa-calendar"></i> ${formatDate(project.created_at)}</span>
             </div>
-            
-            <div class="project-actions">
-                <button class="btn-icon" onclick="event.stopPropagation(); viewProjectDetail(${project.id})" title="View Details">
-                    <i class="fas fa-eye"></i>
+            <div class="project-actions-mini">
+                <button class="btn-mini" onclick="viewProjectDetails(${project.id}); event.stopPropagation();">
+                    <i class="fas fa-eye"></i> View
                 </button>
-                <button class="btn-icon" onclick="event.stopPropagation(); reanalyzeProject(${project.id})" title="Re-analyze">
-                    <i class="fas fa-sync"></i>
+                <button class="btn-mini" onclick="editProject(${project.id}); event.stopPropagation();">
+                    <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn-icon" onclick="event.stopPropagation(); editProject(${project.id})" title="Edit">
-                    <i class="fas fa-edit"></i>
+                <button class="btn-mini" onclick="deleteProject(${project.id}); event.stopPropagation();">
+                    <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
         </div>
     `;
 }
 
-function updateStatistics() {
-    const activeProjects = projectsData.filter(p => p.status === 'active').length;
-    const totalArea = projectsData.reduce((sum, p) => sum + parseFloat(p.area_hectares || 0), 0);
-    const avgProgress = projectsData.length > 0 
-        ? projectsData.reduce((sum, p) => sum + (parseInt(p.progress_percentage) || 0), 0) / projectsData.length 
-        : 0;
-    const alerts = projectsData.filter(p => 
-        p.land_degradation_level === 'severe' || p.land_degradation_level === 'critical'
-    ).length;
-    
-    const activeCountEl = document.getElementById('activeCount');
-    const totalAreaEl = document.getElementById('totalArea');
-    const avgProgressEl = document.getElementById('avgProgress');
-    const alertCountEl = document.getElementById('alertCount');
-    
-    if (activeCountEl) activeCountEl.textContent = activeProjects;
-    if (totalAreaEl) totalAreaEl.textContent = totalArea.toFixed(1);
-    if (avgProgressEl) avgProgressEl.textContent = Math.round(avgProgress);
-    if (alertCountEl) alertCountEl.textContent = alerts;
-}
-
-// ========================
-// FILTER FUNCTIONALITY
-// ========================
-
-function filterProjects() {
-    const searchTerm = document.getElementById('searchProjects')?.value.toLowerCase() || '';
-    const statusFilter = document.getElementById('filterStatus')?.value || '';
-    const typeFilter = document.getElementById('filterType')?.value || '';
-    
-    const filtered = projectsData.filter(project => {
-        const matchesSearch = project.name.toLowerCase().includes(searchTerm) ||
-                            (project.location && project.location.toLowerCase().includes(searchTerm));
-        const matchesStatus = !statusFilter || project.status === statusFilter;
-        const matchesType = !typeFilter || project.project_type === typeFilter;
-        
-        return matchesSearch && matchesStatus && matchesType;
-    });
-    
-    renderProjects(filtered);
-}
-
-// ========================
-// MODAL MANAGEMENT
-// ========================
-
-function openProjectModal() {
-    console.log('Opening project modal...');
-    const modal = document.getElementById('projectModal');
-    if (modal) {
-        modal.classList.add('show');
-        document.body.style.overflow = 'hidden';
-        
-        setTimeout(() => {
-            if (!map) {
-                initializeMap();
-            }
-        }, 100);
-    }
-}
-
-function closeProjectModal() {
-    const modal = document.getElementById('projectModal');
-    if (modal) {
-        modal.classList.remove('show');
-        document.body.style.overflow = '';
-        
-        const form = document.getElementById('projectForm');
-        if (form) form.reset();
-        
-        currentAnalysis = null;
-    }
-}
-
-// ========================
-// MAP FUNCTIONALITY
-// ========================
-
-function initializeMap() {
-    const container = document.getElementById('mapContainer');
+function renderAllProjects() {
+    const container = document.getElementById('allProjectsGrid');
     if (!container) return;
     
-    console.log('Initializing map...');
+    if (state.filteredProjects.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="grid-column: 1 / -1;">
+                <i class="fas fa-search"></i>
+                <h3>No Projects Found</h3>
+                <p>Try adjusting your filters</p>
+            </div>
+        `;
+        return;
+    }
     
-    const defaultLat = -1.2921;
-    const defaultLng = 36.8219;
+    container.innerHTML = state.filteredProjects.map(project => createFullCard(project)).join('');
+}
+
+function createFullCard(project) {
+    const statusColors = {
+        'planning': '#3b82f6',
+        'active': '#10b981',
+        'completed': '#8b5cf6',
+        'paused': '#f59e0b'
+    };
+    
+    const typeIcons = {
+        'reforestation': '🌲',
+        'soil-conservation': '🏔️',
+        'watershed': '💧',
+        'agroforestry': '🌾'
+    };
+    
+    return `
+        <div class="project-card-full">
+            <div class="project-card-full-header">
+                <h3>
+                    <span class="project-type-icon">${typeIcons[project.project_type] || '🌿'}</span>
+                    ${escapeHtml(project.name)}
+                </h3>
+                <span class="project-status-badge" style="background: ${statusColors[project.status]}">
+                    ${project.status}
+                </span>
+            </div>
+            <div class="project-card-full-body">
+                <div class="project-info-row">
+                    <span><i class="fas fa-map-marker-alt"></i> Location</span>
+                    <strong>${escapeHtml(project.location || 'Unknown')}</strong>
+                </div>
+                <div class="project-info-row">
+                    <span><i class="fas fa-ruler-combined"></i> Area</span>
+                    <strong>${parseFloat(project.area_hectares || 0).toFixed(1)} hectares</strong>
+                </div>
+                <div class="project-info-row">
+                    <span><i class="fas fa-chart-line"></i> Progress</span>
+                    <strong>${parseInt(project.progress_percentage || 0)}%</strong>
+                </div>
+                <div class="project-info-row">
+                    <span><i class="fas fa-leaf"></i> NDVI</span>
+                    <strong>${project.vegetation_index ? parseFloat(project.vegetation_index).toFixed(2) : 'N/A'}</strong>
+                </div>
+                <div class="project-info-row">
+                    <span><i class="fas fa-calendar"></i> Created</span>
+                    <strong>${formatDate(project.created_at)}</strong>
+                </div>
+            </div>
+            <div class="project-card-full-footer">
+                <button class="btn-mini" onclick="viewProjectDetails(${project.id})">
+                    <i class="fas fa-eye"></i> View
+                </button>
+                <button class="btn-mini" onclick="editProject(${project.id})">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn-mini" onclick="deleteProject(${project.id})">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// ========================
+// MAP FUNCTIONS
+// ========================
+
+function initializeMainMap() {
+    const container = document.getElementById('projectsMap');
+    if (!container || typeof L === 'undefined') {
+        console.error('Leaflet not loaded or container not found');
+        return;
+    }
     
     try {
-        map = L.map(container).setView([defaultLat, defaultLng], 7);
+        state.maps.main = L.map(container).setView([-1.2921, 36.8219], 7);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 19
-        }).addTo(map);
+        }).addTo(state.maps.main);
         
-        map.on('click', (e) => {
-            const lat = e.latlng.lat.toFixed(6);
-            const lng = e.latlng.lng.toFixed(6);
-            
-            document.getElementById('latitude').value = lat;
-            document.getElementById('longitude').value = lng;
-            
-            updateMapMarker();
-        });
-        
-        console.log('✓ Map initialized');
+        console.log('✓ Main map initialized');
     } catch (error) {
-        console.error('Map error:', error);
+        console.error('Map initialization error:', error);
     }
 }
 
-function updateMapMarker() {
-    const latInput = document.getElementById('latitude');
-    const lngInput = document.getElementById('longitude');
+function updateMainMap() {
+    if (!state.maps.main || !state.projects.length) return;
     
-    if (!latInput || !lngInput) return;
+    // Clear existing markers
+    state.markers.main.forEach(marker => state.maps.main.removeLayer(marker));
+    state.markers.main = [];
     
-    const lat = parseFloat(latInput.value);
-    const lng = parseFloat(lngInput.value);
+    const bounds = [];
     
-    if (!isNaN(lat) && !isNaN(lng) && map) {
-        if (marker) {
-            map.removeLayer(marker);
+    // Add markers for each project
+    state.projects.forEach(project => {
+        if (project.latitude && project.longitude) {
+            const statusColors = {
+                'planning': '#3b82f6',
+                'active': '#10b981',
+                'completed': '#8b5cf6',
+                'paused': '#f59e0b'
+            };
+            
+            const icon = L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="background: ${statusColors[project.status]}; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+            
+            const marker = L.marker([project.latitude, project.longitude], { icon })
+                .bindPopup(`
+                    <div style="min-width: 200px;">
+                        <strong style="font-size: 1.1em; color: #10b981;">${project.name}</strong><br>
+                        <span style="color: #6b7280;">📍 ${project.location || 'Unknown'}</span><br>
+                        <span style="color: #6b7280;">📏 ${parseFloat(project.area_hectares || 0).toFixed(1)} hectares</span><br>
+                        <span style="color: #6b7280;">📊 ${project.status}</span><br>
+                        <button onclick="viewProjectDetails(${project.id})" 
+                                style="margin-top: 10px; padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                            View Details
+                        </button>
+                    </div>
+                `)
+                .addTo(state.maps.main);
+            
+            state.markers.main.push(marker);
+            bounds.push([project.latitude, project.longitude]);
+        }
+    });
+    
+    // Fit map to show all markers
+    if (bounds.length > 0) {
+        state.maps.main.fitBounds(bounds, { padding: [50, 50] });
+    }
+}
+
+function initializeModalMap() {
+    const container = document.getElementById('modalMap');
+    if (!container || typeof L === 'undefined') return;
+    
+    try {
+        if (state.maps.modal) {
+            state.maps.modal.remove();
         }
         
-        marker = L.marker([lat, lng]).addTo(map);
-        map.setView([lat, lng], 12);
+        state.maps.modal = L.map(container).setView([-1.2921, 36.8219], 7);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(state.maps.modal);
+        
+        // Click to set location
+        state.maps.modal.on('click', (e) => {
+            document.getElementById('latitude').value = e.latlng.lat.toFixed(6);
+            document.getElementById('longitude').value = e.latlng.lng.toFixed(6);
+            updateModalMarker();
+        });
+        
+        console.log('✓ Modal map initialized');
+    } catch (error) {
+        console.error('Modal map error:', error);
     }
+}
+
+function updateModalMarker() {
+    const lat = parseFloat(document.getElementById('latitude')?.value);
+    const lng = parseFloat(document.getElementById('longitude')?.value);
+    
+    if (!isNaN(lat) && !isNaN(lng) && state.maps.modal) {
+        if (state.markers.modal) {
+            state.maps.modal.removeLayer(state.markers.modal);
+        }
+        
+        state.markers.modal = L.marker([lat, lng]).addTo(state.maps.modal);
+        state.maps.modal.setView([lat, lng], 12);
+    }
+}
+
+window.centerMap = function() {
+    if (state.maps.main && state.projects.length > 0) {
+        const bounds = state.projects
+            .filter(p => p.latitude && p.longitude)
+            .map(p => [p.latitude, p.longitude]);
+        
+        if (bounds.length > 0) {
+            state.maps.main.fitBounds(bounds, { padding: [50, 50] });
+        }
+    }
+};
+
+window.toggleFullscreen = function() {
+    const container = document.querySelector('.map-container');
+    if (!document.fullscreenElement) {
+        container.requestFullscreen?.();
+    } else {
+        document.exitFullscreen?.();
+    }
+};
+
+// ========================
+// PROJECT ACTIONS
+// ========================
+
+function selectProject(projectId) {
+    const project = state.projects.find(p => p.id === projectId);
+    if (project) {
+        state.selectedProject = project;
+        renderLatestProjects();
+        
+        // Center map on selected project
+        if (state.maps.main && project.latitude && project.longitude) {
+            state.maps.main.setView([project.latitude, project.longitude], 12);
+            
+            // Open popup for this project
+            state.markers.main.forEach(marker => {
+                const latlng = marker.getLatLng();
+                if (latlng.lat === project.latitude && latlng.lng === project.longitude) {
+                    marker.openPopup();
+                }
+            });
+        }
+    }
+}
+
+window.viewProjectDetails = async function(projectId) {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) {
+        showNotification('Project not found', 'error');
+        return;
+    }
+    
+    const modal = document.getElementById('projectDetailsModal');
+    const content = document.getElementById('projectDetailsContent');
+    const title = document.getElementById('detailsProjectName');
+    
+    if (!modal || !content) return;
+    
+    title.innerHTML = `<i class="fas fa-info-circle"></i> ${escapeHtml(project.name)}`;
+    
+    content.innerHTML = `
+        <div class="project-details-tabs">
+            <button class="tab-btn active" data-tab="overview">
+                <i class="fas fa-info-circle"></i> Overview
+            </button>
+            <button class="tab-btn" data-tab="monitoring">
+                <i class="fas fa-satellite-dish"></i> Monitoring
+            </button>
+            <button class="tab-btn" data-tab="insights">
+                <i class="fas fa-brain"></i> AI Insights
+            </button>
+        </div>
+        
+        <div class="tab-content active" data-tab="overview">
+            ${createOverviewTab(project)}
+        </div>
+        <div class="tab-content" data-tab="monitoring">
+            ${createMonitoringTab(project)}
+        </div>
+        <div class="tab-content" data-tab="insights">
+            ${createInsightsTab(project)}
+        </div>
+    `;
+    
+    // Setup tab switching
+    content.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            
+            content.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            content.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            btn.classList.add('active');
+            content.querySelector(`.tab-content[data-tab="${tab}"]`)?.classList.add('active');
+        });
+    });
+    
+    modal.classList.add('show');
+};
+
+function createOverviewTab(project) {
+    return `
+        <div class="details-grid">
+            <div class="details-card">
+                <h4><i class="fas fa-info-circle"></i> Basic Information</h4>
+                <div class="project-info-row">
+                    <span>Type</span>
+                    <strong>${project.project_type || 'N/A'}</strong>
+                </div>
+                <div class="project-info-row">
+                    <span>Status</span>
+                    <strong>${project.status || 'N/A'}</strong>
+                </div>
+                <div class="project-info-row">
+                    <span>Area</span>
+                    <strong>${parseFloat(project.area_hectares || 0).toFixed(1)} hectares</strong>
+                </div>
+                <div class="project-info-row">
+                    <span>Location</span>
+                    <strong>${escapeHtml(project.location || 'Unknown')}</strong>
+                </div>
+                <div class="project-info-row">
+                    <span>Created</span>
+                    <strong>${formatDate(project.created_at)}</strong>
+                </div>
+            </div>
+            
+            <div class="details-card">
+                <h4><i class="fas fa-globe-africa"></i> Environmental Data</h4>
+                <div class="project-info-row">
+                    <span>Climate Zone</span>
+                    <strong>${project.climate_zone || 'N/A'}</strong>
+                </div>
+                <div class="project-info-row">
+                    <span>Soil Type</span>
+                    <strong>${project.soil_type || 'N/A'}</strong>
+                </div>
+                <div class="project-info-row">
+                    <span>Temperature</span>
+                    <strong>${project.temperature || 'N/A'}°C</strong>
+                </div>
+                <div class="project-info-row">
+                    <span>Degradation Level</span>
+                    <strong>${project.land_degradation_level || 'N/A'}</strong>
+                </div>
+            </div>
+            
+            <div class="details-card" style="grid-column: 1 / -1;">
+                <h4><i class="fas fa-align-left"></i> Description</h4>
+                <p>${escapeHtml(project.description || 'No description provided')}</p>
+            </div>
+            
+            ${project.recommended_crops && project.recommended_crops.length > 0 ? `
+                <div class="details-card">
+                    <h4><i class="fas fa-seedling"></i> Recommended Crops</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                        ${project.recommended_crops.slice(0, 6).map(crop => 
+                            `<span style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; border-radius: 20px; font-size: 0.875rem;">${crop}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${project.recommended_trees && project.recommended_trees.length > 0 ? `
+                <div class="details-card">
+                    <h4><i class="fas fa-tree"></i> Recommended Trees</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                        ${project.recommended_trees.slice(0, 6).map(tree => 
+                            `<span style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #10b981, #059669); color: white; border-radius: 20px; font-size: 0.875rem;">${tree}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function createMonitoringTab(project) {
+    return `
+        <div class="details-grid">
+            <div class="details-card">
+                <h4><i class="fas fa-leaf"></i> Vegetation Health</h4>
+                <div class="project-info-row">
+                    <span>NDVI Index</span>
+                    <strong>${project.vegetation_index ? parseFloat(project.vegetation_index).toFixed(2) : 'N/A'}</strong>
+                </div>
+                <div class="project-info-row">
+                    <span>Health Status</span>
+                    <strong>${getHealthStatus(project.vegetation_index)}</strong>
+                </div>
+            </div>
+            
+            <div class="details-card">
+                <h4><i class="fas fa-chart-line"></i> Progress</h4>
+                <div class="project-info-row">
+                    <span>Completion</span>
+                    <strong>${parseInt(project.progress_percentage || 0)}%</strong>
+                </div>
+                <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin-top: 1rem;">
+                    <div style="height: 100%; background: linear-gradient(90deg, #10b981, #059669); width: ${project.progress_percentage || 0}%; transition: width 0.5s;"></div>
+                </div>
+            </div>
+            
+            <div class="details-card" style="grid-column: 1 / -1;">
+                <h4><i class="fas fa-satellite"></i> Monitoring Data</h4>
+                <p style="color: #6b7280; margin-bottom: 1rem;">Real-time satellite monitoring and AI analysis</p>
+                <button class="btn btn-primary" onclick="updateMonitoring(${project.id})">
+                    <i class="fas fa-sync"></i> Update Monitoring Data
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function createInsightsTab(project) {
+    const techniques = Array.isArray(project.restoration_techniques) ? project.restoration_techniques : [];
+    
+    return `
+        <div class="details-grid">
+            <div class="details-card" style="grid-column: 1 / -1;">
+                <h4><i class="fas fa-brain"></i> AI Recommendations</h4>
+                <p style="color: #6b7280; margin-bottom: 1rem;">Personalized restoration strategies based on AI analysis</p>
+                ${techniques.length > 0 ? `
+                    <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.75rem;">
+                        ${techniques.slice(0, 5).map(tech => `
+                            <li style="padding: 0.75rem 1rem; background: #f9fafb; border-left: 3px solid #10b981; border-radius: 8px;">
+                                <i class="fas fa-check-circle" style="color: #10b981; margin-right: 0.5rem;"></i>
+                                ${tech}
+                            </li>
+                        `).join('')}
+                    </ul>
+                ` : '<p style="color: #9ca3af;">No AI recommendations available yet</p>'}
+            </div>
+            
+            <div class="details-card" style="grid-column: 1 / -1;">
+                <button class="btn btn-success btn-block" onclick="downloadReport(${project.id})">
+                    <i class="fas fa-download"></i> Download Full AI Analysis Report
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+window.editProject = function(projectId) {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) {
+        showNotification('Project not found', 'error');
+        return;
+    }
+    
+    state.editMode = true;
+    
+    document.getElementById('modalTitle').innerHTML = '<i class="fas fa-edit"></i> Edit Project';
+    document.getElementById('submitBtnText').textContent = 'Update Project';
+    document.getElementById('projectId').value = project.id;
+    document.getElementById('projectName').value = project.name || '';
+    document.getElementById('projectType').value = project.project_type || '';
+    document.getElementById('projectArea').value = project.area_hectares || '';
+    document.getElementById('projectDescription').value = project.description || '';
+    document.getElementById('latitude').value = project.latitude || '';
+    document.getElementById('longitude').value = project.longitude || '';
+    
+    openProjectModal();
+    
+    setTimeout(() => {
+        initializeModalMap();
+        updateModalMarker();
+    }, 100);
+};
+
+window.deleteProject = async function(projectId) {
+    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/projects/${projectId}/delete`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('✓ Project deleted successfully', 'success');
+            await loadProjects();
+        } else {
+            showNotification(data.error || 'Failed to delete project', 'error');
+        }
+    } catch (error) {
+        console.error('Delete error:', error);
+        showNotification('Error deleting project', 'error');
+    }
+};
+
+window.updateMonitoring = async function(projectId) {
+    showNotification('🔄 Updating monitoring data...', 'info');
+    
+    try {
+        const response = await fetch(`/monitoring/api/project/${projectId}/update`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('✓ Monitoring data updated!', 'success');
+            await loadProjects();
+            closeDetailsModal();
+        } else {
+            showNotification(data.error || 'Failed to update', 'error');
+        }
+    } catch (error) {
+        showNotification('Error updating monitoring data', 'error');
+    }
+};
+
+window.downloadReport = function(projectId) {
+    showNotification('Downloading AI analysis report...', 'info');
+    window.location.href = `/projects/${projectId}/report`;
+};
+
+// ========================
+// MODAL FUNCTIONS
+// ========================
+
+function openAllProjectsModal() {
+    state.filteredProjects = [...state.projects];
+    renderAllProjects();
+    document.getElementById('allProjectsModal')?.classList.add('show');
+}
+
+function closeAllProjectsModal() {
+    document.getElementById('allProjectsModal')?.classList.remove('show');
+}
+
+function openProjectModal() {
+    if (!state.editMode) {
+        document.getElementById('projectForm')?.reset();
+        document.getElementById('modalTitle').innerHTML = '<i class="fas fa-plus"></i> Create New Project';
+        document.getElementById('submitBtnText').textContent = 'Create Project';
+        document.getElementById('projectId').value = '';
+    }
+    
+    document.getElementById('projectModal')?.classList.add('show');
+    
+    setTimeout(() => {
+        initializeModalMap();
+    }, 100);
+}
+
+function closeProjectModal() {
+    document.getElementById('projectModal')?.classList.remove('show');
+    state.editMode = false;
+}
+
+function closeDetailsModal() {
+    document.getElementById('projectDetailsModal')?.classList.remove('show');
 }
 
 // ========================
-// QUICK CREATE FUNCTIONALITY
+// FORM HANDLING
 // ========================
 
 async function handleQuickCreate() {
-    console.log('🚀 Quick Create initiated');
-    
     const btn = document.getElementById('quickCreateBtn');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
-    }
+    if (!btn) return;
     
-    showNotification('🎯 Getting your location and analyzing...', 'info');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+    
+    showNotification('🎯 Getting your location...', 'info');
     
     try {
-        // Get GPS location
         const position = await new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
                 enableHighAccuracy: true,
@@ -572,19 +826,13 @@ async function handleQuickCreate() {
             });
         });
         
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        
-        console.log('GPS Location:', lat, lng);
-        
-        // Create project with minimal info
         const projectData = {
-            name: `Project at ${new Date().toLocaleString()}`,
-            description: 'Quick-created project',
+            name: `Quick Project - ${new Date().toLocaleString()}`,
+            description: 'Quick-created project using GPS',
             project_type: 'reforestation',
-            area_hectares: 10, // Default 10 hectares
-            latitude: lat,
-            longitude: lng
+            area_hectares: 10,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
         };
         
         const response = await fetch('/projects/create', {
@@ -603,23 +851,17 @@ async function handleQuickCreate() {
         }
     } catch (error) {
         console.error('Quick create error:', error);
-        showNotification('Failed to create project. Please try manual creation.', 'error');
+        showNotification('Failed to create project. Please enable GPS.', 'error');
     } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-bolt"></i> Quick Create';
-        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-bolt"></i> Quick Create';
     }
 }
 
-// ========================
-// FORM SUBMISSION
-// ========================
-
 async function handleProjectSubmit(e) {
     e.preventDefault();
-    console.log('📝 Submitting project form...');
     
+    const projectId = document.getElementById('projectId')?.value;
     const formData = {
         name: document.getElementById('projectName')?.value,
         description: document.getElementById('projectDescription')?.value || '',
@@ -629,8 +871,8 @@ async function handleProjectSubmit(e) {
         longitude: parseFloat(document.getElementById('longitude')?.value)
     };
     
-    // Validate
-    if (!formData.name || !formData.project_type || !formData.area_hectares || !formData.latitude || !formData.longitude) {
+    if (!formData.name || !formData.project_type || !formData.area_hectares || 
+        !formData.latitude || !formData.longitude) {
         showNotification('Please fill all required fields', 'warning');
         return;
     }
@@ -638,12 +880,15 @@ async function handleProjectSubmit(e) {
     const submitBtn = e.target.querySelector('button[type="submit"]');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
     }
     
     try {
-        const response = await fetch('/projects/create', {
-            method: 'POST',
+        const url = projectId ? `/projects/${projectId}/update` : '/projects/create';
+        const method = 'POST';
+        
+        const response = await fetch(url, {
+            method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
         });
@@ -651,72 +896,99 @@ async function handleProjectSubmit(e) {
         const data = await response.json();
         
         if (data.success) {
-            showNotification('🎉 Project created successfully!', 'success');
+            showNotification(projectId ? '✓ Project updated!' : '🎉 Project created!', 'success');
             closeProjectModal();
             await loadProjects();
         } else {
-            showNotification(data.error || 'Failed to create project', 'error');
+            showNotification(data.error || 'Failed to save project', 'error');
         }
     } catch (error) {
-        console.error('Submission error:', error);
-        showNotification('Failed to create project', 'error');
+        console.error('Form submit error:', error);
+        showNotification('Error saving project', 'error');
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-check"></i> Create Project';
+            submitBtn.innerHTML = `<i class="fas fa-check"></i> <span id="submitBtnText">${projectId ? 'Update' : 'Create'} Project</span>`;
         }
     }
 }
 
 // ========================
-// PROJECT ACTIONS
+// FILTER FUNCTIONS
 // ========================
 
-function viewProjectDetail(projectId) {
-    window.location.href = `/projects/${projectId}`;
-}
-
-async function reanalyzeProject(projectId) {
-    if (!confirm('Re-analyze this project?')) return;
+function filterProjects() {
+    const searchTerm = document.getElementById('searchProjects')?.value.toLowerCase() || '';
+    const statusFilter = document.getElementById('filterStatus')?.value || '';
+    const typeFilter = document.getElementById('filterType')?.value || '';
     
-    try {
-        const response = await fetch(`/projects/${projectId}/reanalyze`, {
-            method: 'POST'
-        });
+    state.filteredProjects = state.projects.filter(project => {
+        const matchesSearch = project.name.toLowerCase().includes(searchTerm) ||
+                            (project.location && project.location.toLowerCase().includes(searchTerm));
+        const matchesStatus = !statusFilter || project.status === statusFilter;
+        const matchesType = !typeFilter || project.project_type === typeFilter;
         
-        const data = await response.json();
-        
-        if (data.success) {
-            showNotification('✓ Project re-analyzed', 'success');
-            await loadProjects();
-        } else {
-            showNotification(data.error || 'Re-analysis failed', 'error');
-        }
-    } catch (error) {
-        showNotification('Failed to re-analyze', 'error');
-    }
+        return matchesSearch && matchesStatus && matchesType;
+    });
+    
+    renderAllProjects();
 }
 
-function editProject(projectId) {
-    window.location.href = `/projects/${projectId}/edit`;
+// ========================
+// STATISTICS
+// ========================
+
+function updateStatistics() {
+    const total = state.projects.length;
+    const active = state.projects.filter(p => p.status === 'active').length;
+    const totalArea = state.projects.reduce((sum, p) => sum + parseFloat(p.area_hectares || 0), 0);
+    
+    // Count unique locations
+    const locations = new Set(state.projects.map(p => p.location).filter(Boolean));
+    const totalLocations = locations.size;
+    
+    document.getElementById('totalProjects').textContent = total;
+    document.getElementById('activeProjects').textContent = active;
+    document.getElementById('totalArea').textContent = totalArea.toFixed(1);
+    document.getElementById('totalLocations').textContent = totalLocations;
 }
 
-// Make functions globally accessible
-window.viewProjectDetail = viewProjectDetail;
-window.reanalyzeProject = reanalyzeProject;
-window.editProject = editProject;
-window.openProjectModal = openProjectModal;
-window.closeProjectModal = closeProjectModal;
-
 // ========================
-// UTILITY FUNCTIONS
+// HELPER FUNCTIONS
 // ========================
 
-function formatProjectType(type) {
-    if (!type) return 'Unknown';
-    return type.split('-').map(word => 
-        word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ');
+function showEmptyState(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="empty-state">
+            <i class="fas fa-seedling"></i>
+            <h3>No Projects Yet</h3>
+            <p>Start your first land restoration project</p>
+            <button class="btn btn-primary" onclick="openProjectModal()">
+                <i class="fas fa-plus"></i> Create Project
+            </button>
+        </div>
+    `;
+}
+
+function getHealthStatus(ndvi) {
+    if (!ndvi) return 'Unknown';
+    if (ndvi >= 0.6) return 'Excellent';
+    if (ndvi >= 0.4) return 'Good';
+    if (ndvi >= 0.2) return 'Fair';
+    return 'Poor';
+}
+
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+    });
 }
 
 function escapeHtml(text) {
@@ -751,7 +1023,6 @@ function showNotification(message, type = 'info') {
     if (!container) {
         container = document.createElement('div');
         container.id = 'notificationContainer';
-        container.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000;';
         document.body.appendChild(container);
     }
     
@@ -764,4 +1035,4 @@ function showNotification(message, type = 'info') {
     }, 4000);
 }
 
-console.log('✓ RegenArdhi Projects JavaScript loaded!');
+console.log('✓ RegenArdhi Projects loaded!');

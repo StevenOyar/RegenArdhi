@@ -1,7 +1,7 @@
 import os
 import requests
 import json
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, flash
 from flask_mysqldb import MySQL
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -16,9 +16,9 @@ projects_bp = Blueprint('projects', __name__, url_prefix='/projects')
 mysql = None
 
 # API Keys
-OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY', 'your_key_here')
-GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', 'your_key_here')
-NASA_EARTH_API_KEY = os.getenv('NASA_EARTH_API_KEY', 'DEMO_KEY')
+OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
+GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY')
+NASA_EARTH_API_KEY = os.getenv('NASA_EARTH_API_KEY')
 
 # ========================
 # REAL API INTEGRATION
@@ -859,6 +859,363 @@ def project_detail(project_id):
     except Exception as e:
         print(f"Error fetching project detail: {e}")
         return render_template('404.html'), 404
+# ========================
+# NEW ROUTES FOR REDESIGNED FRONTEND
+# ========================
+
+@projects_bp.route('/<int:project_id>/update', methods=['POST'])
+def update_project(project_id):
+    """Update an existing project"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        data = request.get_json()
+        user_id = session.get('user_id')
+        
+        # First check if project exists and belongs to user
+        from MySQLdb.cursors import DictCursor
+        cur = mysql.connection.cursor(DictCursor)
+        
+        cur.execute('SELECT * FROM projects WHERE id = %s AND user_id = %s', 
+                   (project_id, user_id))
+        project = cur.fetchone()
+        
+        if not project:
+            cur.close()
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+        
+        # Update basic fields
+        name = data.get('name', project['name'])
+        description = data.get('description', project['description'])
+        project_type = data.get('project_type', project['project_type'])
+        area_hectares = data.get('area_hectares', project['area_hectares'])
+        latitude = data.get('latitude', project['latitude'])
+        longitude = data.get('longitude', project['longitude'])
+        
+        # Check if location changed - if so, re-analyze
+        location_changed = (
+            float(latitude) != float(project['latitude']) or 
+            float(longitude) != float(project['longitude']) or
+            float(area_hectares) != float(project['area_hectares'])
+        )
+        
+        if location_changed:
+            print(f"🔄 Location changed, running new AI analysis...")
+            
+            # Run new AI analysis
+            ai_analysis = comprehensive_land_analysis(
+                float(latitude),
+                float(longitude),
+                float(area_hectares)
+            )
+            
+            if not ai_analysis:
+                cur.close()
+                return jsonify({'success': False, 'error': 'Failed to analyze new location'}), 500
+            
+            # Get new location name
+            location_name = get_location_name(float(latitude), float(longitude))
+            
+            # Update with new analysis
+            cur.execute('''
+                UPDATE projects 
+                SET name = %s,
+                    description = %s,
+                    project_type = %s,
+                    area_hectares = %s,
+                    location = %s,
+                    latitude = %s,
+                    longitude = %s,
+                    soil_type = %s,
+                    soil_ph = %s,
+                    soil_fertility = %s,
+                    climate_zone = %s,
+                    annual_rainfall = %s,
+                    temperature = %s,
+                    humidity = %s,
+                    elevation = %s,
+                    vegetation_index = %s,
+                    land_degradation_level = %s,
+                    recommended_crops = %s,
+                    recommended_trees = %s,
+                    restoration_techniques = %s,
+                    estimated_timeline_months = %s,
+                    estimated_budget = %s,
+                    last_ai_analysis = %s,
+                    updated_at = %s
+                WHERE id = %s AND user_id = %s
+            ''', (
+                name, description, project_type, area_hectares, location_name,
+                latitude, longitude,
+                ai_analysis['soil_type'],
+                ai_analysis['soil_ph'],
+                ai_analysis['soil_fertility'],
+                ai_analysis['climate_zone'],
+                ai_analysis['annual_rainfall'],
+                ai_analysis['temperature'],
+                ai_analysis['humidity'],
+                ai_analysis.get('elevation', 0),
+                ai_analysis['vegetation_index'],
+                ai_analysis['land_degradation_level'],
+                json.dumps(ai_analysis['recommended_crops']),
+                json.dumps(ai_analysis['recommended_trees']),
+                json.dumps(ai_analysis['restoration_techniques']),
+                ai_analysis['estimated_timeline_months'],
+                ai_analysis['estimated_budget'],
+                datetime.now(),
+                datetime.now(),
+                project_id,
+                user_id
+            ))
+        else:
+            # Just update basic info
+            cur.execute('''
+                UPDATE projects 
+                SET name = %s,
+                    description = %s,
+                    project_type = %s,
+                    updated_at = %s
+                WHERE id = %s AND user_id = %s
+            ''', (name, description, project_type, datetime.now(), project_id, user_id))
+        
+        mysql.connection.commit()
+        cur.close()
+        
+        print(f"✅ Project {project_id} updated successfully!")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Project updated successfully',
+            'location_changed': location_changed
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error updating project: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@projects_bp.route('/<int:project_id>/delete', methods=['DELETE'])
+def delete_project(project_id):
+    """Delete a project"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        user_id = session.get('user_id')
+        
+        cur = mysql.connection.cursor()
+        
+        # Check if project exists and belongs to user
+        cur.execute('SELECT id FROM projects WHERE id = %s AND user_id = %s', 
+                   (project_id, user_id))
+        project = cur.fetchone()
+        
+        if not project:
+            cur.close()
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+        
+        # Delete the project (CASCADE will handle related records)
+        cur.execute('DELETE FROM projects WHERE id = %s AND user_id = %s', 
+                   (project_id, user_id))
+        
+        mysql.connection.commit()
+        cur.close()
+        
+        print(f"✅ Project {project_id} deleted successfully!")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Project deleted successfully'
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error deleting project: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@projects_bp.route('/<int:project_id>/update-status', methods=['POST'])
+def update_project_status(project_id):
+    """Update project status"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        data = request.get_json()
+        status = data.get('status')
+        user_id = session.get('user_id')
+        
+        valid_statuses = ['planning', 'active', 'completed', 'paused']
+        if status not in valid_statuses:
+            return jsonify({'success': False, 'error': 'Invalid status'}), 400
+        
+        cur = mysql.connection.cursor()
+        
+        cur.execute('''
+            UPDATE projects 
+            SET status = %s, updated_at = %s
+            WHERE id = %s AND user_id = %s
+        ''', (status, datetime.now(), project_id, user_id))
+        
+        if cur.rowcount == 0:
+            cur.close()
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+        
+        mysql.connection.commit()
+        cur.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Status updated successfully'
+        }), 200
+        
+    except Exception as e:
+        print(f"Error updating status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@projects_bp.route('/<int:project_id>/report')
+def download_report(project_id):
+    """Generate and download project report"""
+    if 'user_id' not in session:
+        return redirect(url_for('main.login'))
+    
+    try:
+        from MySQLdb.cursors import DictCursor
+        cur = mysql.connection.cursor(DictCursor)
+        user_id = session.get('user_id')
+        
+        cur.execute('SELECT * FROM projects WHERE id = %s AND user_id = %s', 
+                   (project_id, user_id))
+        project = cur.fetchone()
+        cur.close()
+        
+        if not project:
+            flash('Project not found', 'error')
+            return redirect(url_for('projects.projects'))
+        
+        # Parse JSON fields
+        for field in ['recommended_crops', 'recommended_trees', 'restoration_techniques']:
+            if project.get(field):
+                try:
+                    if isinstance(project[field], str):
+                        project[field] = json.loads(project[field])
+                except:
+                    project[field] = []
+        
+        # For now, render an HTML report
+        # In production, you could generate a PDF using libraries like ReportLab or WeasyPrint
+        return render_template('project_report.html', project=project, user=session)
+        
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        flash('Error generating report', 'error')
+        return redirect(url_for('projects.projects'))
+
+
+@projects_bp.route('/api/stats')
+def api_project_stats():
+    """Get project statistics for dashboard"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        from MySQLdb.cursors import DictCursor
+        cur = mysql.connection.cursor(DictCursor)
+        user_id = session.get('user_id')
+        
+        # Get count by status
+        cur.execute('''
+            SELECT 
+                COUNT(*) as total_projects,
+                SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_projects,
+                SUM(CASE WHEN status = 'planning' THEN 1 ELSE 0 END) as planning_projects,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_projects,
+                SUM(area_hectares) as total_area,
+                COUNT(DISTINCT location) as total_locations
+            FROM projects
+            WHERE user_id = %s
+        ''', (user_id,))
+        
+        stats = cur.fetchone()
+        
+        # Get recent projects
+        cur.execute('''
+            SELECT id, name, status, created_at
+            FROM projects
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+        ''', (user_id,))
+        
+        recent_projects = cur.fetchall()
+        
+        cur.close()
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'total_projects': stats['total_projects'] or 0,
+                'active_projects': stats['active_projects'] or 0,
+                'planning_projects': stats['planning_projects'] or 0,
+                'completed_projects': stats['completed_projects'] or 0,
+                'total_area': float(stats['total_area'] or 0),
+                'total_locations': stats['total_locations'] or 0
+            },
+            'recent_projects': [dict(p) for p in recent_projects]
+        })
+        
+    except Exception as e:
+        print(f"Error getting stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@projects_bp.route('/api/map-data')
+def api_map_data():
+    """Get simplified project data for map markers"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        from MySQLdb.cursors import DictCursor
+        cur = mysql.connection.cursor(DictCursor)
+        user_id = session.get('user_id')
+        
+        cur.execute('''
+            SELECT 
+                id, name, location, latitude, longitude, 
+                status, area_hectares, project_type,
+                vegetation_index, land_degradation_level
+            FROM projects
+            WHERE user_id = %s
+        ''', (user_id,))
+        
+        projects = cur.fetchall()
+        cur.close()
+        
+        # Convert Decimal types
+        for project in projects:
+            if project.get('latitude'):
+                project['latitude'] = float(project['latitude'])
+            if project.get('longitude'):
+                project['longitude'] = float(project['longitude'])
+            if project.get('area_hectares'):
+                project['area_hectares'] = float(project['area_hectares'])
+            if project.get('vegetation_index'):
+                project['vegetation_index'] = float(project['vegetation_index'])
+        
+        return jsonify({
+            'success': True,
+            'projects': projects
+        })
+        
+    except Exception as e:
+        print(f"Error getting map data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @projects_bp.route('/<int:project_id>/reanalyze', methods=['POST'])
 def reanalyze_project(project_id):
