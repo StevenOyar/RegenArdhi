@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monitoring | RegenArdhi</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/monitoring.css') }}" />
+</head>
+<body>
+    <!-- Navbar -->
+    <header>
+        <nav class="navbar">
+            <div class="logo-container">
+                <span class="logo-icon">🌿</span>
+                <h1 class="logo"><a href="/">RegenArdhi</a></h1>
+            </div>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="/dashboard">Dashboard</a></li>
+                <li><a href="/projects">Projects</a></li>
+                <li><a href="/monitoring" class="active">Monitoring</a></li>
+                <li><a href="/insights">Insights</a></li>
+            </ul>
+            <div class="nav-actions">
+                <button class="btn-icon" id="refreshDataBtn" title="Refresh Data">
+                    <i class="fas fa-sync"></i>
+                </button>
+                <div class="user-menu">
+                    <button class="user-btn" id="userMenuBtn">
+                        <i class="fas fa-user-circle"></i>
+                        <span id="userName">{{ user.first_name }}</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="dropdown-menu" id="userDropdown">
+                        <a href="/profile"><i class="fas fa-user"></i> Profile</a>
+                        <a href="/settings"><i class="fas fa-cog"></i> Settings</a>
+                        <a href="{{ url_for('main.logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                    </div>
+                </div>
+            </div>
+            <button class="mobile-toggle" id="mobileToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="monitoring-main">
+        <!-- Left Sidebar: Project Selector & Alerts -->
+        <aside class="monitoring-sidebar">
+            <!-- Project Selector -->
+            <div class="sidebar-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-project-diagram"></i> Select Project</h3>
+                </div>
+                <select id="projectSelector" class="project-select">
+                    <option value="">Loading projects...</option>
+                </select>
+            </div>
+
+            <!-- Smart Alerts -->
+            <div class="sidebar-section alerts-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-bell"></i> Smart Alerts</h3>
+                    <span class="alert-badge" id="alertCount">0</span>
+                </div>
+                <div id="alertsList" class="alerts-list">
+                    <div class="loading-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Loading alerts...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="sidebar-section stats-section">
+                <div class="stat-mini">
+                    <div class="stat-mini-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
+                        <i class="fas fa-leaf"></i>
+                    </div>
+                    <div class="stat-mini-content">
+                        <span class="stat-mini-value" id="currentNDVI">--</span>
+                        <span class="stat-mini-label">Current NDVI</span>
+                    </div>
+                </div>
+                <div class="stat-mini">
+                    <div class="stat-mini-icon" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                        <i class="fas fa-temperature-half"></i>
+                    </div>
+                    <div class="stat-mini-content">
+                        <span class="stat-mini-value" id="currentTemp">--</span>
+                        <span class="stat-mini-label">Temperature</span>
+                    </div>
+                </div>
+                <div class="stat-mini">
+                    <div class="stat-mini-icon" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">
+                        <i class="fas fa-droplet"></i>
+                    </div>
+                    <div class="stat-mini-content">
+                        <span class="stat-mini-value" id="soilMoisture">--</span>
+                        <span class="stat-mini-label">Soil Moisture</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Center: GIS Map -->
+        <section class="map-section">
+            <div class="map-header">
+                <h2><i class="fas fa-map"></i> Live GIS Monitor</h2>
+                <div class="map-controls">
+                    <div class="layer-controls">
+                        <button class="layer-btn active" data-layer="satellite" title="Satellite View">
+                            <i class="fas fa-satellite"></i>
+                        </button>
+                        <button class="layer-btn" data-layer="ndvi" title="NDVI Layer">
+                            <i class="fas fa-leaf"></i>
+                        </button>
+                        <button class="layer-btn" data-layer="soil" title="Soil Health">
+                            <i class="fas fa-mountain"></i>
+                        </button>
+                        <button class="layer-btn" data-layer="landcover" title="Land Cover">
+                            <i class="fas fa-layer-group"></i>
+                        </button>
+                    </div>
+                    <button class="btn-icon" onclick="toggleFullscreenMap()" title="Fullscreen">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="monitoringMap" class="monitoring-map"></div>
+            <div class="map-legend" id="mapLegend">
+                <!-- Dynamic legend based on active layer -->
+            </div>
+        </section>
+
+        <!-- Right Panel: AI Insights & Charts -->
+        <aside class="insights-panel">
+            <!-- AI Insights -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-brain"></i> AI Insights</h3>
+                    <button class="btn-icon-sm" onclick="refreshInsights()" title="Refresh">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <div id="aiInsightsContent" class="insights-content">
+                    <div class="loading-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Analyzing data...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NDVI Trend Chart -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-chart-line"></i> NDVI Trend</h3>
+                </div>
+                <canvas id="ndviChart" class="chart-canvas"></canvas>
+            </div>
+
+            <!-- Rainfall vs Vegetation -->
+            <div class="panel-section">
+                <div class="section-header">
+                    <h3><i class="fas fa-cloud-rain"></i> Climate Impact</h3>
+                </div>
+                <canvas id="climateChart" class="chart-canvas"></canvas>
+            </div>
+
+            <!-- Health Score -->
+            <div class="panel-section health-score">
+                <div class="section-header">
+                    <h3><i class="fas fa-heart-pulse"></i> Land Health Score</h3>
+                </div>
+                <div class="score-display">
+                    <div class="score-circle" id="healthScoreCircle">
+                        <svg width="120" height="120">
+                            <circle cx="60" cy="60" r="54" stroke="#e5e7eb" stroke-width="8" fill="none" />
+                            <circle id="scoreCircle" cx="60" cy="60" r="54" stroke="#10b981" stroke-width="8" 
+                                    fill="none" stroke-dasharray="339.292" stroke-dashoffset="339.292" 
+                                    transform="rotate(-90 60 60)" />
+                        </svg>
+                        <div class="score-value">
+                            <span id="healthScore">--</span>
+                            <span class="score-label">/ 100</span>
+                        </div>
+                    </div>
+                    <div class="score-details">
+                        <div class="score-item">
+                            <span class="score-dot" style="background: #10b981;"></span>
+                            <span>Vegetation: <strong id="vegScore">--</strong></span>
+                        </div>
+                        <div class="score-item">
+                            <span class="score-dot" style="background: #3b82f6;"></span>
+                            <span>Soil: <strong id="soilScore">--</strong></span>
+                        </div>
+                        <div class="score-item">
+                            <span class="score-dot" style="background: #8b5cf6;"></span>
+                            <span>Water: <strong id="waterScore">--</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Zone Details Modal -->
+    <div class="modal" id="zoneModal">
+        <div class="modal-content modal-medium">
+            <div class="modal-header">
+                <h2 id="zoneModalTitle"><i class="fas fa-map-pin"></i> Zone Details</h2>
+                <button class="btn-close" onclick="closeZoneModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="zoneModalContent">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/monitoring.js') }}"></script>
+</body>
+</html>
