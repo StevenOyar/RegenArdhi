@@ -12,7 +12,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # -------------------------
-# 🔐 Configurations
+# 🔧 Configurations
 # -------------------------
 app.secret_key = os.getenv("SECRET_KEY", "dev-key-please-change-this-in-production")
 
@@ -67,39 +67,103 @@ with app.app_context():
         
         mysql.connection.commit()
         cur.close()
-        print("✓ Users table initialized successfully!")
+        print("✅ Users table initialized successfully!")
         
     except Exception as e:
-        print(f"✗ Error initializing users table: {e}")
+        print(f"❌ Error initializing users table: {e}")
+
+# -------------------------
+# 📦 Register Blueprints
+# -------------------------
+print("\n=== Loading Modules ===")
 
 # Initialize Projects module
 try:
     from app.projects import projects_bp, init_projects
     init_projects(app, mysql)
     app.register_blueprint(projects_bp)
-    print("✓ Projects module loaded successfully!")
+    print("✅ Projects module loaded successfully!")
 except Exception as e:
-    print(f"✗ Failed to load Projects module: {e}")
+    print(f"❌ Failed to load Projects module: {e}")
+    import traceback
+    traceback.print_exc()
 
-# Initialize Monitoring module (if exists)
+# Initialize Monitoring module
 try:
     from app.monitoring import monitoring_bp, init_monitoring
     init_monitoring(app, mysql)
     app.register_blueprint(monitoring_bp)
-    print("✓ Monitoring module loaded successfully!")
+    print("✅ Monitoring module loaded successfully!")
 except Exception as e:
-    print(f"⚠ Monitoring module not found or failed to load: {e}")
+    print(f"❌ Failed to load Monitoring module: {e}")
+    import traceback
+    traceback.print_exc()
 
-# Import and register main routes
-from app.routes import main
-app.register_blueprint(main)
-print("✓ Main routes loaded successfully!")
+# Initialize Insights module
+try:
+    from app.insights import insights_bp, init_insights
+    init_insights(app, mysql)
+    app.register_blueprint(insights_bp)
+    print("✅ Insights module loaded successfully!")
+    print(f"  → Insights blueprint registered at: {insights_bp.url_prefix}")
+except Exception as e:
+    print(f"❌ Failed to load Insights module: {e}")
+    import traceback
+    traceback.print_exc()
+
+# Initialize Chat module
+try:
+    from app.chat import chat_bp, init_chat
+    init_chat(app, mysql)
+    app.register_blueprint(chat_bp)
+    print("✅ Chat module loaded successfully!")
+except Exception as e:
+    print(f"❌ Failed to load Chat module: {e}")
+    import traceback
+    traceback.print_exc()
+
+# Import and register main routes (LAST)
+try:
+    from app.routes import main
+    app.register_blueprint(main)
+    print("✅ Main routes loaded successfully!")
+except Exception as e:
+    print(f"❌ Error loading routes: {e}")
+    import traceback
+    traceback.print_exc()
+
+print("\n=== All Modules Loaded ===")
+
+# Print all registered routes for debugging
+print("\n=== Registered Routes ===")
+for rule in app.url_map.iter_rules():
+    methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
+    print(f"  {rule.endpoint:40s} {methods:15s} {rule.rule}")
+print("========================\n")
+
+
+
+# Test API keys
+from app.api_integrations import OpenWeatherAPI, NASAPowerAPI
+
+# Test OpenWeather
+weather = OpenWeatherAPI.get_current_weather(-1.2921, 36.8219)
+print(weather)
+
+# Test NASA POWER
+from datetime import datetime, timedelta
+climate = NASAPowerAPI.get_climate_data(
+    -1.2921, 36.8219,
+    datetime.now() - timedelta(days=7),
+    datetime.now()
+)
+print(climate)
 
 if __name__ == "__main__":
     print("=" * 60)
     print("🌿 RegenArdhi Server Starting...")
     print("=" * 60)
-    print(f"SECRET_KEY: {'✓ Set' if app.secret_key else '✗ NOT SET'}")
+    print(f"SECRET_KEY: {'✅ Set' if app.secret_key else '❌ NOT SET'}")
     print(f"MYSQL_HOST: {app.config.get('MYSQL_HOST')}")
     print(f"MYSQL_USER: {app.config.get('MYSQL_USER')}")
     print(f"MYSQL_DB: {app.config.get('MYSQL_DB')}")
