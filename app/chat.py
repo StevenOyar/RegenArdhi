@@ -6,8 +6,21 @@ from flask_mysqldb import MySQL
 from datetime import datetime
 from dotenv import load_dotenv
 import time
+import logging
+
+# Try to import OpenAI, but don't fail if not installed
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("⚠️ OpenAI package not installed. Install with: pip install openai")
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create Blueprint
 chat_bp = Blueprint('chat', __name__, url_prefix='/chat')
@@ -15,21 +28,37 @@ chat_bp = Blueprint('chat', __name__, url_prefix='/chat')
 # MySQL connection
 mysql = None
 
-# API Configuration
-HUGGINGFACE_API_KEY = os.getenv('HUGGINGFACE_API_KEY')
-HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/"
+# API Configuration - PRIMARY: Hugging Face Router (OpenAI-compatible)
+HUGGINGFACE_API_KEY = os.getenv('HUGGINGFACE_API_KEY') or os.getenv('HF_TOKEN')
+HUGGINGFACE_BASE_URL = os.getenv('HUGGINGFACE_BASE_URL', 'https://router.huggingface.co/v1')
+HUGGINGFACE_MODEL = os.getenv('HUGGINGFACE_MODEL', 'google/gemma-2-2b-it')
 
-# Working models (tested and verified)
-# ✅ Publicly available and stable text-generation models
+# FALLBACK: Direct Hugging Face Inference API
+HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models"
 WORKING_MODELS = [
-    "mistralai/mistral-7b-instruct",
-    "google/gemma-2-2b-it",           # Conversational & open-access
-    "tiiuae/falcon-7b-instruct",    # Strong instruction-following model
-    "mistralai/Mistral-7B-Instruct-v0.2"  # Reliable fallback
+    "facebook/bart-large-cnn",
+    "distilbert-base-uncased-finetuned-sst-2-english",
+    "gpt2",
+    "distilgpt2",
 ]
-DEFAULT_MODEL = WORKING_MODELS[0]
 
-DEFAULT_MODEL = WORKING_MODELS[0]
+# Initialize OpenAI-compatible client for Hugging Face
+hf_client = None
+if OPENAI_AVAILABLE and HUGGINGFACE_API_KEY and HUGGINGFACE_API_KEY != 'your_key_here':
+    try:
+        hf_client = OpenAI(
+            base_url=HUGGINGFACE_BASE_URL,
+            api_key=HUGGINGFACE_API_KEY,
+        )
+        logger.info(f"✅ Hugging Face Router initialized with model: {HUGGINGFACE_MODEL}")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize Hugging Face client: {e}")
+        hf_client = None
+else:
+    if not OPENAI_AVAILABLE:
+        logger.warning("⚠️ OpenAI package not available")
+    logger.warning("⚠️ No Hugging Face API key found, will use fallback responses")
+
 
 def init_chat(app, mysql_instance):
     """Initialize chat module"""
@@ -39,28 +68,69 @@ def init_chat(app, mysql_instance):
     with app.app_context():
         try:
             cur = mysql.connection.cursor()
-            cur.execute('''
-                CREATE TABLE IF NOT EXISTS chat_history (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    project_id INT,
-                    message TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-                    response TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-                    context JSON,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
-                    INDEX idx_user_project (user_id, project_id)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            ''')
+            
+            # First, check if table exists
+            cur.execute("SHOW TABLES LIKE 'chat_history'")
+            table_exists = cur.fetchone()
+            
+            if not table_exists:
+                # Create new table with all columns
+                cur.execute('''
+                    CREATE TABLE chat_history (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        user_id INT NOT NULL,
+                        project_id INT,
+                        message TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+                        response TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+                        context JSON,
+                        ai_method VARCHAR(50) DEFAULT 'huggingface_router',
+                        response_time_ms INT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+                        INDEX idx_user_project (user_id, project_id),
+                        INDEX idx_ai_method (ai_method)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ''')
+                logger.info("✅ Chat history table created!")
+            else:
+                # Table exists, check for missing columns
+                cur.execute("DESCRIBE chat_history")
+                columns = [row[0] for row in cur.fetchall()]
+                
+                # Add ai_method if missing
+                if 'ai_method' not in columns:
+                    try:
+                        cur.execute('''
+                            ALTER TABLE chat_history 
+                            ADD COLUMN ai_method VARCHAR(50) DEFAULT 'huggingface_router' AFTER context
+                        ''')
+                        logger.info("✅ Added ai_method column")
+                    except Exception as e:
+                        logger.debug(f"Could not add ai_method: {e}")
+                
+                # Add response_time_ms if missing
+                if 'response_time_ms' not in columns:
+                    try:
+                        cur.execute('''
+                            ALTER TABLE chat_history 
+                            ADD COLUMN response_time_ms INT AFTER ai_method
+                        ''')
+                        logger.info("✅ Added response_time_ms column")
+                    except Exception as e:
+                        logger.debug(f"Could not add response_time_ms: {e}")
+            
             mysql.connection.commit()
             cur.close()
-            print("✅ Chat history table initialized!")
+            logger.info("✅ Chat history table initialized!")
         except Exception as e:
-            print(f"⚠️ Chat table error (may already exist): {e}")
+            logger.error(f"⚠️ Chat table error: {e}")
+            import traceback
+            traceback.print_exc()
     
-    print("✅ Chat module initialized!")
+    logger.info("✅ Chat module initialized!")
+
 
 # ========================
 # CONTEXT BUILDING
@@ -74,13 +144,17 @@ def get_user_context(user_id):
         
         cur.execute('''
             SELECT COUNT(*) as total_projects,
-                   SUM(area_hectares) as total_area,
+                   COALESCE(SUM(area_hectares), 0) as total_area,
                    COUNT(CASE WHEN status = 'active' THEN 1 END) as active_projects
             FROM projects
             WHERE user_id = %s
         ''', (user_id,))
         
         stats = cur.fetchone()
+        
+        if not stats:
+            cur.close()
+            return {}
         
         cur.execute('''
             SELECT name, project_type, status, land_degradation_level
@@ -95,7 +169,7 @@ def get_user_context(user_id):
         
         return {
             'total_projects': stats['total_projects'] or 0,
-            'total_area': float(stats['total_area'] or 0),
+            'total_area': float(stats['total_area']),
             'active_projects': stats['active_projects'] or 0,
             'recent_projects': [
                 f"{p['name']} ({p['project_type']}, {p['status']})"
@@ -104,8 +178,9 @@ def get_user_context(user_id):
         }
         
     except Exception as e:
-        print(f"Error getting user context: {e}")
+        logger.error(f"Error getting user context: {e}")
         return {}
+
 
 def get_project_context(project_id):
     """Get specific project context"""
@@ -149,12 +224,9 @@ def get_project_context(project_id):
         return context
         
     except Exception as e:
-        print(f"Error getting project context: {e}")
+        logger.error(f"Error getting project context: {e}")
         return None
 
-# ========================
-# AI RESPONSE GENERATION
-# ========================
 
 def build_context_prompt(user_context, project_context=None):
     """Build context information for the AI"""
@@ -179,367 +251,266 @@ def build_context_prompt(user_context, project_context=None):
     
     return " | ".join(context_parts) if context_parts else ""
 
-def query_huggingface(user_message, context_info="", max_retries=1):
-    """Query Hugging Face API with enhanced error handling and logging"""
+
+# ========================
+# PRIMARY: HUGGING FACE ROUTER (OpenAI-Compatible)
+# ========================
+
+def query_huggingface_router(user_message, context_info=""):
+    """
+    PRIMARY METHOD: Query Hugging Face using OpenAI-compatible router
+    """
+    if not hf_client:
+        logger.warning("⚠️ Hugging Face client not initialized")
+        return None
     
-    # If no API key, go straight to fallback
+    try:
+        logger.info(f"🤖 Querying Hugging Face Router with model: {HUGGINGFACE_MODEL}")
+        logger.info(f"📝 Message: {user_message[:50]}...")
+        
+        start_time = time.time()
+        
+        # Build system prompt for land restoration context
+        system_prompt = """You are RegenAI, a knowledgeable and supportive land restoration assistant specializing in:
+- Vegetation health analysis (NDVI interpretation)
+- Soil health and remediation
+- Sustainable agriculture practices
+- Climate-appropriate planting strategies
+- Land degradation restoration techniques
+
+Key guidelines:
+- Provide practical, actionable advice
+- Base recommendations on scientific best practices
+- Consider local climate and soil conditions
+- Be encouraging and supportive
+- Keep responses clear and concise (2-3 paragraphs max)
+- Focus on sustainable, long-term solutions
+
+"""
+        
+        # Add user context if available
+        if context_info:
+            system_prompt += f"\nUser Context: {context_info}\n"
+        
+        # Get AI configuration from environment
+        max_tokens = int(os.getenv('AI_MAX_TOKENS', 300))
+        temperature = float(os.getenv('AI_TEMPERATURE', 0.7))
+        
+        # Call Hugging Face API using OpenAI-compatible interface
+        completion = hf_client.chat.completions.create(
+            model=HUGGINGFACE_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        
+        response_time = int((time.time() - start_time) * 1000)  # Convert to ms
+        
+        bot_reply = completion.choices[0].message.content
+        
+        if bot_reply and len(bot_reply.strip()) > 20:
+            logger.info(f"✅ HF Router response received in {response_time}ms")
+            return {
+                'response': bot_reply.strip(),
+                'method': 'huggingface_router',
+                'model': HUGGINGFACE_MODEL,
+                'response_time_ms': response_time
+            }
+        else:
+            logger.warning(f"⚠️ HF Router returned empty/short response")
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ Hugging Face Router error: {str(e)}")
+        return None
+
+
+# ========================
+# FALLBACK: DIRECT INFERENCE API
+# ========================
+
+def query_huggingface_inference(user_message, context_info=""):
+    """
+    FALLBACK METHOD: Query Hugging Face Inference API directly
+    """
     if not HUGGINGFACE_API_KEY or HUGGINGFACE_API_KEY == 'your_key_here':
-        print("⚠️ No Hugging Face API key, using intelligent fallback")
-        return generate_intelligent_fallback(user_message, context_info)
+        return None
+    
+    logger.info("🔄 Trying fallback: Hugging Face Inference API")
     
     # Build prompt
-    prompt = f"{user_message}"
     if context_info:
-        prompt = f"Context: {context_info}\nQuestion: {user_message}\nAnswer:"
+        prompt = f"""Land Restoration Context: {context_info}
+
+User Question: {user_message}
+
+Provide a helpful, detailed answer about land restoration, agriculture, or environmental management."""
+    else:
+        prompt = f"""Agricultural and Land Restoration Assistant
+
+User Question: {user_message}
+
+Provide a helpful, practical answer about land restoration, agriculture, NDVI, soil health, or planting."""
     
     headers = {
         "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
         "Content-Type": "application/json"
     }
     
-    api_errors = []  # Track all errors for debugging
-    
     # Try each working model
-    for model in WORKING_MODELS:
+    for model_name in WORKING_MODELS:
         try:
-            model_url = f"{HUGGINGFACE_API_URL}{model}"
-            print(f"🤖 Trying model: {model}")
-            print(f"🔗 Full URL: {model_url}")
+            model_url = f"{HUGGINGFACE_API_URL}/{model_name}"
+            logger.info(f"🔗 Trying: {model_name}")
             
-            payload = {
-                "inputs": prompt,
-                "parameters": {
-                    "max_new_tokens": 200,
-                    "temperature": 0.7,
-                    "return_full_text": False
-                },
-                "options": {
-                    "wait_for_model": True
+            start_time = time.time()
+            
+            # Payload based on model type
+            if "bart" in model_name.lower():
+                payload = {
+                    "inputs": prompt,
+                    "parameters": {
+                        "max_length": 250,
+                        "min_length": 50,
+                        "do_sample": False,
+                        "early_stopping": True
+                    },
+                    "options": {"wait_for_model": True, "use_cache": True}
                 }
-            }
+            else:
+                payload = {
+                    "inputs": prompt,
+                    "parameters": {
+                        "max_new_tokens": 200,
+                        "temperature": 0.7,
+                        "top_p": 0.9,
+                        "do_sample": True,
+                        "return_full_text": False
+                    },
+                    "options": {"wait_for_model": True, "use_cache": True}
+                }
             
-            response = requests.post(
-                model_url,
-                headers=headers,
-                json=payload,
-                timeout=15
-            )
+            response = requests.post(model_url, headers=headers, json=payload, timeout=30)
+            response_time = int((time.time() - start_time) * 1000)
             
-            print(f"📡 Status Code: {response.status_code}")
-            
-            # Handle different status codes
             if response.status_code == 200:
                 result = response.json()
-                print(f"✅ Raw Response Type: {type(result)}")
-                print(f"✅ Raw Response: {str(result)[:200]}")
                 
-                # Extract text from response
+                # Extract text
                 text = None
                 if isinstance(result, list) and len(result) > 0:
-                    if isinstance(result[0], dict):
-                        text = result[0].get('generated_text', '')
-                    elif isinstance(result[0], str):
-                        text = result[0]
+                    first_item = result[0]
+                    if isinstance(first_item, dict):
+                        text = (first_item.get('summary_text') or 
+                               first_item.get('generated_text') or 
+                               first_item.get('text'))
+                    elif isinstance(first_item, str):
+                        text = first_item
                 elif isinstance(result, dict):
-                    text = result.get('generated_text', '')
+                    text = (result.get('summary_text') or 
+                           result.get('generated_text') or 
+                           result.get('text'))
                 
-                if text:
-                    # Clean up response
-                    text = text.replace(prompt, '').strip()
+                if text and len(text.strip()) > 20:
+                    text = text.strip()
+                    if prompt in text:
+                        text = text.replace(prompt, '').strip()
+                    
+                    # Remove artifacts
+                    for artifact in ['Answer:', 'Response:', 'Summary:', 'CNN.com']:
+                        text = text.replace(artifact, '').strip()
+                    
                     if len(text) > 20:
-                        print(f"✅ Got valid response from {model}")
-                        return text
-                    else:
-                        error_msg = f"Response too short: '{text}'"
-                        print(f"⚠️ {error_msg}")
-                        api_errors.append({
-                            'model': model,
-                            'status': 200,
-                            'error': error_msg
-                        })
-                else:
-                    error_msg = "No text in response"
-                    print(f"⚠️ {error_msg}")
-                    api_errors.append({
-                        'model': model,
-                        'status': 200,
-                        'error': error_msg,
-                        'response': result
-                    })
+                        logger.info(f"✅ Inference success: {model_name}")
+                        return {
+                            'response': text,
+                            'method': 'huggingface_inference',
+                            'model': model_name,
+                            'response_time_ms': response_time
+                        }
             
-            elif response.status_code == 404:
-                error_msg = f"Model not found (404)"
-                print(f"❌ 404 Error: Model '{model}' not found at {model_url}")
-                try:
-                    error_detail = response.json()
-                    print(f"📄 Error Details: {error_detail}")
-                    api_errors.append({
-                        'model': model,
-                        'status': 404,
-                        'url': model_url,
-                        'error': error_msg,
-                        'details': error_detail
-                    })
-                except:
-                    print(f"📄 Raw Response Text: {response.text[:500]}")
-                    api_errors.append({
-                        'model': model,
-                        'status': 404,
-                        'url': model_url,
-                        'error': error_msg,
-                        'raw_response': response.text[:500]
-                    })
-                continue
-            
-            elif response.status_code == 401:
-                error_msg = "Unauthorized - Invalid API key"
-                print(f"❌ 401 Error: {error_msg}")
-                print(f"🔑 API Key (first 15 chars): {HUGGINGFACE_API_KEY[:15]}...")
-                api_errors.append({
-                    'model': model,
-                    'status': 401,
-                    'error': error_msg
-                })
-                # Don't try other models if API key is invalid
-                break
-            
-            elif response.status_code == 403:
-                error_msg = "Forbidden - No access to this model"
-                print(f"❌ 403 Error: {error_msg}")
-                try:
-                    error_detail = response.json()
-                    print(f"📄 Error Details: {error_detail}")
-                    api_errors.append({
-                        'model': model,
-                        'status': 403,
-                        'error': error_msg,
-                        'details': error_detail
-                    })
-                except:
-                    api_errors.append({
-                        'model': model,
-                        'status': 403,
-                        'error': error_msg
-                    })
-                continue
-                
             elif response.status_code == 503:
-                error_msg = "Service unavailable - Model loading"
-                print(f"⏳ 503 Error: {error_msg}")
-                try:
-                    error_detail = response.json()
-                    estimated_time = error_detail.get('estimated_time', 'unknown')
-                    print(f"⏱️ Estimated wait time: {estimated_time}s")
-                    api_errors.append({
-                        'model': model,
-                        'status': 503,
-                        'error': error_msg,
-                        'estimated_time': estimated_time
-                    })
-                except:
-                    api_errors.append({
-                        'model': model,
-                        'status': 503,
-                        'error': error_msg
-                    })
+                logger.info(f"⏳ Model loading...")
+                time.sleep(10)
                 continue
-            
-            elif response.status_code == 429:
-                error_msg = "Rate limit exceeded"
-                print(f"⏸️ 429 Error: {error_msg}")
-                try:
-                    error_detail = response.json()
-                    print(f"📄 Error Details: {error_detail}")
-                    api_errors.append({
-                        'model': model,
-                        'status': 429,
-                        'error': error_msg,
-                        'details': error_detail
-                    })
-                except:
-                    api_errors.append({
-                        'model': model,
-                        'status': 429,
-                        'error': error_msg
-                    })
-                continue
-            
-            else:
-                error_msg = f"Unexpected status: {response.status_code}"
-                print(f"❌ {error_msg}")
-                try:
-                    error_detail = response.json()
-                    print(f"📄 Error Details: {error_detail}")
-                    api_errors.append({
-                        'model': model,
-                        'status': response.status_code,
-                        'error': error_msg,
-                        'details': error_detail
-                    })
-                except:
-                    print(f"📄 Raw Response: {response.text[:500]}")
-                    api_errors.append({
-                        'model': model,
-                        'status': response.status_code,
-                        'error': error_msg,
-                        'raw_response': response.text[:500]
-                    })
-                continue
-                
-        except requests.exceptions.Timeout as e:
-            error_msg = f"Timeout after 15s"
-            print(f"⏱️ Timeout Error: {error_msg}")
-            api_errors.append({
-                'model': model,
-                'error_type': 'Timeout',
-                'error': error_msg
-            })
-            continue
-            
-        except requests.exceptions.ConnectionError as e:
-            error_msg = f"Connection failed: {str(e)[:100]}"
-            print(f"🔌 Connection Error: {error_msg}")
-            api_errors.append({
-                'model': model,
-                'error_type': 'ConnectionError',
-                'error': error_msg
-            })
-            continue
-            
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Request error: {str(e)[:100]}"
-            print(f"❌ Request Error: {error_msg}")
-            api_errors.append({
-                'model': model,
-                'error_type': 'RequestException',
-                'error': error_msg
-            })
-            continue
-            
-        except json.JSONDecodeError as e:
-            error_msg = f"Invalid JSON: {str(e)}"
-            print(f"📄 JSON Error: {error_msg}")
-            api_errors.append({
-                'model': model,
-                'error_type': 'JSONDecodeError',
-                'error': error_msg
-            })
-            continue
             
         except Exception as e:
-            error_msg = f"Unexpected error: {str(e)[:100]}"
-            print(f"❌ Unexpected Error: {error_msg}")
-            import traceback
-            traceback.print_exc()
-            api_errors.append({
-                'model': model,
-                'error_type': type(e).__name__,
-                'error': error_msg
-            })
+            logger.error(f"❌ Error on {model_name}: {str(e)[:100]}")
             continue
     
-    # All models failed - log summary
-    print("\n" + "="*70)
-    print("❌ ALL HUGGINGFACE MODELS FAILED - ERROR SUMMARY:")
-    print("="*70)
-    for i, err in enumerate(api_errors, 1):
-        print(f"\n{i}. Model: {err.get('model', 'Unknown')}")
-        print(f"   Status: {err.get('status', err.get('error_type', 'Unknown'))}")
-        print(f"   Error: {err.get('error', 'No error message')}")
-        if 'url' in err:
-            print(f"   URL: {err['url']}")
-        if 'details' in err:
-            print(f"   Details: {err['details']}")
-        if 'raw_response' in err:
-            print(f"   Raw Response: {err['raw_response'][:150]}...")
-    print("="*70 + "\n")
-    
-    # Save errors to log file
-    try:
-        with open('huggingface_errors.log', 'a') as f:
-            f.write(f"\n\n{'='*70}\n")
-            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
-            f.write(f"Message: {user_message}\n")
-            f.write(f"Context: {context_info}\n")
-            f.write(f"API Key Present: {'Yes' if HUGGINGFACE_API_KEY else 'No'}\n")
-            if HUGGINGFACE_API_KEY:
-                f.write(f"API Key Preview: {HUGGINGFACE_API_KEY[:15]}...\n")
-            f.write(f"Base URL: {HUGGINGFACE_API_URL}\n")
-            f.write(f"\nErrors:\n{json.dumps(api_errors, indent=2)}\n")
-    except Exception as e:
-        print(f"⚠️ Could not write to error log: {e}")
-    
-    # Use intelligent fallback
-    print("⚠️ Falling back to intelligent responses")
-    return generate_intelligent_fallback(user_message, context_info)
+    return None
+
+
+# ========================
+# INTELLIGENT FALLBACK
+# ========================
 
 def generate_intelligent_fallback(user_message, context_info=""):
-    """Enhanced fallback responses - NO emojis for database compatibility"""
+    """Keyword-based fallback responses"""
     message_lower = user_message.lower()
     
-    # Extract NDVI from context
-    has_ndvi = 'ndvi' in context_info.lower()
-    
     # NDVI queries
-    if 'ndvi' in message_lower or 'vegetation' in message_lower:
-        if has_ndvi:
+    if 'ndvi' in message_lower or 'vegetation index' in message_lower:
+        if context_info and 'ndvi' in context_info.lower():
             import re
             ndvi_match = re.search(r'ndvi:\s*([\d.]+)', context_info.lower())
             if ndvi_match:
                 ndvi = float(ndvi_match.group(1))
                 if ndvi > 0.6:
-                    return f"Great news! Your NDVI is {ndvi:.2f}, indicating excellent vegetation health. Your restoration efforts are showing strong results. Continue with current management practices and monitor for any pest or disease issues."
+                    return f"Your NDVI is {ndvi:.2f}, indicating excellent vegetation health! Your land shows dense, healthy vegetation cover. Continue your current management practices and monitor for any changes."
                 elif ndvi > 0.4:
-                    return f"Your NDVI is {ndvi:.2f}, showing good vegetation cover. To improve further, consider: 1) Increasing organic matter through composting, 2) Implementing better water management, 3) Adding nitrogen-fixing cover crops."
+                    return f"Your NDVI is {ndvi:.2f}, showing good vegetation health. To improve further: 1) Add organic matter through composting, 2) Implement better water management, 3) Consider nitrogen-fixing cover crops."
                 elif ndvi > 0.2:
-                    return f"Your NDVI is {ndvi:.2f}, indicating fair vegetation health. Action needed: 1) Implement cover cropping, 2) Apply organic mulch 5-10cm thick, 3) Test and amend soil pH, 4) Ensure adequate irrigation."
+                    return f"Your NDVI is {ndvi:.2f}, indicating fair vegetation health. Actions needed: 1) Implement cover cropping immediately, 2) Apply organic mulch 5-10cm thick, 3) Test and amend soil pH, 4) Ensure adequate irrigation."
                 else:
-                    return f"ALERT: Your NDVI is {ndvi:.2f}, showing critical vegetation stress. Immediate actions: 1) Increase irrigation frequency, 2) Add organic matter and compost, 3) Consider replanting with drought-resistant species, 4) Consult with an agronomist."
+                    return f"CRITICAL: Your NDVI is {ndvi:.2f}, showing severe vegetation stress. Immediate actions: 1) Increase irrigation, 2) Apply compost, 3) Plant drought-resistant species, 4) Consult an agronomist."
         
-        return """NDVI (Normalized Difference Vegetation Index) is a key indicator of vegetation health.
+        return """NDVI (Normalized Difference Vegetation Index) measures vegetation health using satellite data.
 
-Scale interpretation:
-* 0.6 to 1.0 = Excellent (dense, healthy vegetation)
-* 0.4 to 0.6 = Good (moderate, healthy cover)
-* 0.2 to 0.4 = Fair (sparse or stressed vegetation)
-* Below 0.2 = Poor/Critical (severe stress or bare soil)
+Scale:
+• 0.6-1.0 = Excellent (dense, healthy vegetation)
+• 0.4-0.6 = Good (moderate healthy cover)
+• 0.2-0.4 = Fair (sparse or stressed vegetation)
+• Below 0.2 = Poor/Critical (severe stress)
 
-Higher values indicate healthier, denser vegetation. Select a project to see your specific NDVI analysis and recommendations."""
+Higher values = healthier vegetation. Select a project to see your specific NDVI analysis."""
     
-    # Soil health
+    # Soil queries
     elif 'soil' in message_lower:
         if 'moisture' in message_lower:
-            return """Soil moisture is critical for plant growth and restoration success.
+            return """Soil moisture is crucial for plant growth and restoration success.
 
 Optimal ranges:
-* 40-60% = Ideal for most crops and restoration species
-* 30-40% = Acceptable but may need supplemental irrigation
-* Below 30% = Plants experiencing water stress
-* Above 70% = Risk of waterlogging and root diseases
+• 40-60% = Ideal for most crops
+• 30-40% = Acceptable, may need irrigation
+• Below 30% = Water stress
+• Above 70% = Risk of waterlogging
 
 Improvement strategies:
-1. Apply 5-10cm organic mulch to retain moisture
-2. Install drip irrigation systems for efficiency
-3. Add compost to improve water-holding capacity
+1. Apply 5-10cm organic mulch
+2. Install drip irrigation
+3. Add compost for water retention
 4. Plant deep-rooted cover crops
-5. Create swales and berms to capture runoff"""
+5. Create swales to capture runoff"""
         
-        return """Soil health is the foundation of successful land restoration.
+        return """Soil health foundations for successful restoration:
 
 Key indicators:
-* pH level: 6.0-7.5 optimal for most species
-* Organic matter: Target 3-5% or higher
-* Moisture: 40-60% for active growth
-* Structure: Good aggregation, drainage, and aeration
-* Nutrients: Adequate N, P, K levels
+• pH: 6.0-7.5 optimal
+• Organic matter: 3-5% minimum
+• Moisture: 40-60% for growth
+• Good structure and drainage
 
 Improvement plan:
 1. Test soil (pH, nutrients, organic matter)
-2. Add compost or well-rotted manure (2-4 tons/hectare)
+2. Add compost (2-4 tons/hectare)
 3. Use cover crops (legumes fix nitrogen)
-4. Minimize soil disturbance and tillage
-5. Apply organic mulch (conserves moisture, adds nutrients)
-6. Monitor progress with annual testing"""
+4. Minimize tillage
+5. Apply organic mulch
+6. Monitor with annual testing"""
     
     # Planting timing
     elif any(word in message_lower for word in ['plant', 'season', 'when', 'timing']):
@@ -548,173 +519,125 @@ Improvement plan:
         if current_month in [3, 4, 5]:
             return """OPTIMAL PLANTING SEASON: Long Rains (March-May)
 
-This is THE BEST time for planting in Kenya!
+This is the BEST time for planting in Kenya!
 
-Recommended actions:
-* Plant indigenous tree species NOW
-* Establish soil conservation structures (terraces, bunds)
-* Maximize seedling establishment
-* Prepare for 6-8 weeks of optimal growing conditions
-* Priority species: Acacia, Grevillea, Neem, indigenous fruits
+Actions:
+• Plant indigenous trees NOW
+• Establish conservation structures
+• Maximize seedling establishment
+• Priority: Acacia, Grevillea, Neem
 
 Success tips:
-1. Plant at start of rains (not during heavy downpours)
-2. Dig holes 60x60x60cm, fill with topsoil + compost
+1. Plant at rain start
+2. Dig 60x60x60cm holes with compost
 3. Space trees 3-4 meters apart
 4. Stake tall seedlings
-5. Apply mulch around base (keep clear of stem)"""
+5. Mulch around base"""
         
         elif current_month in [10, 11, 12]:
-            return """SECONDARY PLANTING WINDOW: Short Rains (October-December)
+            return """SECONDARY PLANTING: Short Rains (October-December)
 
 Good for hardy, drought-resistant species.
 
-Recommended species:
-* Acacia varieties
-* Grevillea robusta
-* Moringa oleifera
-* Drought-adapted indigenous species
+Best species:
+• Acacia varieties
+• Grevillea robusta
+• Moringa oleifera
+• Drought-adapted indigenous species
 
 Best practices:
 1. Focus on drought-resistant varieties
 2. Prepare irrigation backup
-3. Apply thick mulch (10cm) for moisture retention
-4. Monitor seedlings closely (short rains less reliable)
-5. Water daily for first 2 weeks if rains insufficient
-
-This window is shorter and less predictable than long rains."""
+3. Apply thick mulch (10cm)
+4. Water daily for first 2 weeks
+5. Monitor closely"""
         
         else:
             return """CURRENT STATUS: Dry Season
 
-NOT recommended for planting new seedlings.
+NOT recommended for new planting.
 
-Focus activities:
-* Maintain and water established plants
-* Prepare planting sites for next season
-* Build soil conservation structures
-* Source quality seedlings
-* Test and amend soil
-* Clear invasive species
-* Plan restoration strategy
+Focus activities now:
+• Maintain established plants
+• Prepare planting sites
+• Build conservation structures
+• Source quality seedlings
+• Test and amend soil
+• Clear invasive species
 
 Next planting windows:
-* Primary: March-May (Long Rains) - BEST
-* Secondary: October-December (Short Rains) - Good
-
-Use this time to prepare thoroughly for successful planting when rains arrive."""
-    
-    # Restoration techniques
-    elif any(word in message_lower for word in ['restore', 'technique', 'how', 'improve', 'help']):
-        return """COMPREHENSIVE RESTORATION STRATEGIES
-
-1. SOIL CONSERVATION
-   * Build contour terraces on slopes over 15%
-   * Establish grass strips along contours
-   * Plant cover crops (legumes, grasses)
-   * Apply mulch (5-10cm) to prevent erosion
-   * Create stone bunds or gabions
-
-2. WATER MANAGEMENT
-   * Install rainwater harvesting (tanks, ponds)
-   * Dig infiltration ditches along contours
-   * Create swales to slow runoff
-   * Use drip irrigation for efficiency
-   * Implement zai pits in degraded areas
-
-3. VEGETATION ESTABLISHMENT
-   * Use indigenous species (adapted to local conditions)
-   * Mix trees, shrubs, and grasses
-   * Plant in suitable seasons (March-May best)
-   * Space appropriately (3-4m for trees)
-   * Succession planting (pioneer species first)
-
-4. MONITORING & ADAPTATION
-   * Track NDVI monthly
-   * Monitor soil health quarterly
-   * Measure tree growth and survival
-   * Record rainfall and weather
-   * Adjust strategies based on data
-
-What specific aspect would you like to explore in detail?"""
-    
-    # Data interpretation
-    elif any(word in message_lower for word in ['data', 'interpret', 'understand', 'mean', 'explain']):
-        return """DATA INTERPRETATION GUIDE
-
-Key metrics I monitor:
-
-VEGETATION HEALTH (NDVI)
-* Measures photosynthetic activity
-* 0.6+ = Excellent restoration progress
-* 0.4-0.6 = Good, on track
-* 0.2-0.4 = Fair, needs intervention
-* Below 0.2 = Critical, immediate action
-
-SOIL METRICS
-* Moisture: 40-60% optimal
-* pH: 6.0-7.5 for most species
-* Organic matter: Target 3-5%
-* Erosion risk: Monitor after heavy rains
-
-CLIMATE DATA
-* Temperature: Affects growth rates
-* Rainfall: Critical for establishment
-* Humidity: Influences disease risk
-* Solar radiation: Drives photosynthesis
-
-TRENDS TO WATCH
-* Improving NDVI = Restoration working
-* Declining NDVI = Investigate causes
-* Seasonal patterns = Normal variation
-* Extreme events = May require intervention
-
-Share your specific data for detailed analysis and recommendations!"""
+• Primary: March-May (Long Rains) - BEST
+• Secondary: Oct-Dec (Short Rains) - Good"""
     
     # Greetings
-    elif any(word in message_lower for word in ['hello', 'hi', 'hey', 'greet']):
-        project_note = ""
-        if context_info:
-            project_note = "\n\nI can see you're working on a project. I can help analyze its data and provide specific recommendations!"
-        
-        return f"""Hello! I'm RegenAI, your intelligent land restoration assistant.
+    elif any(word in message_lower for word in ['hello', 'hi', 'hey']):
+        return """Hello! I'm RegenAI, your land restoration assistant.
 
-I can help you with:
-* Vegetation health analysis (NDVI interpretation)
-* Soil health assessment and management
-* Climate pattern analysis and seasonal planning
-* Data interpretation and trend analysis
-* Restoration technique recommendations
-* Species selection guidance{project_note}
+I can help with:
+• Vegetation health analysis (NDVI)
+• Soil health assessment
+• Planting season guidance
+• Restoration techniques
+• Species selection
+• Data interpretation
 
 What would you like to know about your restoration project?"""
     
-    # Thank you
-    elif 'thank' in message_lower:
-        return "You're welcome! I'm here to support your restoration efforts. Feel free to ask anything about your projects, data, or best practices. Together we can restore degraded lands!"
-    
-    # Default comprehensive
+    # Default
     else:
         return """I'm your land restoration AI assistant!
 
 I can help with:
-* VEGETATION: Analyze NDVI data, interpret trends, diagnose issues
-* SOIL: Assess health, recommend amendments, improve fertility
-* CLIMATE: Understand patterns, plan seasonal activities
-* DATA: Interpret metrics, identify trends, track progress
-* TECHNIQUES: Suggest strategies, select species, optimize methods
+• VEGETATION: NDVI analysis, trends, health assessment
+• SOIL: Health evaluation, pH, moisture, amendments
+• PLANTING: Seasonal timing, species selection
+• TECHNIQUES: Restoration strategies, best practices
+• DATA: Metric interpretation, progress tracking
 
 Popular questions:
-* "What is my current NDVI?"
-* "When should I plant?"
-* "How can I improve soil health?"
-* "What do my monitoring metrics mean?"
-* "What restoration techniques work best?"
+• "What is my current NDVI?"
+• "When should I plant trees?"
+• "How can I improve soil health?"
+• "What restoration techniques should I use?"
 
-Please select a project from the dropdown, then ask me anything specific about your data or restoration needs!"""
+Select a project and ask me anything!"""
+
 
 # ========================
-# CHAT ROUTES
+# MAIN AI QUERY
+# ========================
+
+def query_ai(user_message, context_info=""):
+    """
+    Cascading fallback strategy:
+    1. Hugging Face Router (OpenAI-compatible) - PRIMARY
+    2. Hugging Face Inference API - FALLBACK
+    3. Intelligent keyword responses - LAST RESORT
+    """
+    logger.info(f"🚀 Query: {user_message[:50]}...")
+    
+    # Try primary
+    result = query_huggingface_router(user_message, context_info)
+    if result:
+        return result
+    
+    # Try fallback
+    result = query_huggingface_inference(user_message, context_info)
+    if result:
+        return result
+    
+    # Last resort
+    logger.warning("⚠️ Using intelligent fallback")
+    return {
+        'response': generate_intelligent_fallback(user_message, context_info),
+        'method': 'intelligent_fallback',
+        'model': 'keyword_matching',
+        'response_time_ms': 0
+    }
+
+
+# ========================
+# ROUTES
 # ========================
 
 @chat_bp.route('/api/message', methods=['POST'])
@@ -728,10 +651,20 @@ def chat_message():
         user_message = data.get('message', '').strip()
         project_id = data.get('project_id')
         
+        # Validate
         if not user_message:
-            return jsonify({'success': False, 'error': 'Message is required'}), 400
+            return jsonify({'success': False, 'error': 'Message required'}), 400
         
-        print(f"💬 Message: '{user_message}' | Project: {project_id}")
+        if len(user_message) > 1000:
+            return jsonify({'success': False, 'error': 'Message too long'}), 400
+        
+        if project_id is not None:
+            try:
+                project_id = int(project_id)
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'error': 'Invalid project_id'}), 400
+        
+        logger.info(f"💬 Message: '{user_message[:50]}...' | Project: {project_id}")
         
         # Get context
         user_context = get_user_context(session['user_id'])
@@ -741,54 +674,153 @@ def chat_message():
             project_context = get_project_context(project_id)
         
         context_info = build_context_prompt(user_context, project_context)
-        print(f"📋 Context: {context_info}")
         
         # Generate response
-        ai_response = query_huggingface(user_message, context_info)
+        result = query_ai(user_message, context_info)
+        ai_response = result['response']
+        ai_method = result['method']
+        response_time = result.get('response_time_ms', 0)
         
-        if not ai_response:
-            ai_response = generate_intelligent_fallback(user_message, context_info)
+        logger.info(f"🤖 Response ({ai_method}): {ai_response[:100]}...")
         
-        print(f"🤖 Response: {ai_response[:100]}...")
-        
-        # Save to history (with error handling)
+        # Save to database with comprehensive error handling
         try:
             cur = mysql.connection.cursor()
-            cur.execute('''
-                INSERT INTO chat_history (user_id, project_id, message, response, context)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', (
-                session['user_id'],
-                project_id,
-                user_message,
-                ai_response,
-                json.dumps({'user': user_context, 'project': project_context})
-            ))
-            mysql.connection.commit()
+            
+            # Check if new columns exist
+            try:
+                cur.execute("DESCRIBE chat_history")
+                columns = [row[0] for row in cur.fetchall()]
+                has_new_columns = 'ai_method' in columns and 'response_time_ms' in columns
+                logger.debug(f"Database columns: {columns}")
+                logger.debug(f"Has new columns: {has_new_columns}")
+            except Exception as desc_error:
+                logger.error(f"Error checking columns: {desc_error}")
+                has_new_columns = False
+            
+            # Prepare context data
+            try:
+                context_data = json.dumps({
+                    'user': user_context, 
+                    'project': project_context
+                })
+            except Exception as json_error:
+                logger.error(f"Error encoding context to JSON: {json_error}")
+                context_data = json.dumps({'error': 'Could not encode context'})
+            
+            # Try to insert
+            try:
+                if has_new_columns:
+                    logger.debug("Inserting with new columns...")
+                    cur.execute('''
+                        INSERT INTO chat_history 
+                        (user_id, project_id, message, response, context, ai_method, response_time_ms)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ''', (
+                        session['user_id'],
+                        project_id,
+                        user_message,
+                        ai_response,
+                        context_data,
+                        ai_method,
+                        response_time
+                    ))
+                else:
+                    logger.debug("Inserting with old schema...")
+                    # Store ai_method and response_time in context JSON for old schema
+                    context_with_meta = json.dumps({
+                        'user': user_context, 
+                        'project': project_context,
+                        'ai_method': ai_method,
+                        'response_time_ms': response_time
+                    })
+                    cur.execute('''
+                        INSERT INTO chat_history 
+                        (user_id, project_id, message, response, context)
+                        VALUES (%s, %s, %s, %s, %s)
+                    ''', (
+                        session['user_id'],
+                        project_id,
+                        user_message,
+                        ai_response,
+                        context_with_meta
+                    ))
+                
+                mysql.connection.commit()
+                logger.info("✅ Saved to database successfully")
+                
+            except Exception as insert_error:
+                logger.error(f"⚠️ Insert error: {type(insert_error).__name__}: {insert_error}")
+                mysql.connection.rollback()
+                
+                # Try basic insert without context as last resort
+                try:
+                    logger.warning("Attempting basic insert without context...")
+                    if has_new_columns:
+                        cur.execute('''
+                            INSERT INTO chat_history 
+                            (user_id, project_id, message, response, ai_method, response_time_ms)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        ''', (
+                            session['user_id'],
+                            project_id,
+                            user_message,
+                            ai_response,
+                            ai_method,
+                            response_time
+                        ))
+                    else:
+                        cur.execute('''
+                            INSERT INTO chat_history 
+                            (user_id, project_id, message, response)
+                            VALUES (%s, %s, %s, %s)
+                        ''', (
+                            session['user_id'],
+                            project_id,
+                            user_message,
+                            ai_response
+                        ))
+                    mysql.connection.commit()
+                    logger.info("✅ Saved with basic insert")
+                except Exception as basic_error:
+                    logger.error(f"⚠️ Even basic insert failed: {type(basic_error).__name__}: {basic_error}")
+                    mysql.connection.rollback()
+            
             cur.close()
-            print("✅ Chat saved")
+            
         except Exception as e:
-            print(f"⚠️ Save error: {e}")
-            # Continue anyway
+            error_type = type(e).__name__
+            error_msg = str(e)
+            logger.error(f"⚠️ Database save error: {error_type}: {error_msg}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            try:
+                mysql.connection.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Rollback error: {rollback_error}")
         
         return jsonify({
             'success': True,
             'response': ai_response,
+            'method': ai_method,
+            'response_time_ms': response_time,
             'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        logger.error(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
             'success': False,
-            'error': 'Failed to generate response'
+            'error': 'Failed to generate response',
+            'details': str(e)
         }), 500
+
 
 @chat_bp.route('/api/history')
 def get_chat_history():
-    """Get chat history for user"""
+    """Get chat history"""
     if 'user_id' not in session:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     
@@ -797,21 +829,26 @@ def get_chat_history():
         cur = mysql.connection.cursor(DictCursor)
         
         project_id = request.args.get('project_id')
-        limit = int(request.args.get('limit', 20))
+        try:
+            limit = min(int(request.args.get('limit', 20)), 100)
+        except:
+            limit = 20
         
         if project_id:
-            cur.execute('''
-                SELECT * FROM chat_history
-                WHERE user_id = %s AND project_id = %s
-                ORDER BY created_at DESC
-                LIMIT %s
-            ''', (session['user_id'], project_id, limit))
+            try:
+                project_id = int(project_id)
+                cur.execute('''
+                    SELECT * FROM chat_history
+                    WHERE user_id = %s AND project_id = %s
+                    ORDER BY created_at DESC LIMIT %s
+                ''', (session['user_id'], project_id, limit))
+            except:
+                return jsonify({'success': False, 'error': 'Invalid project_id'}), 400
         else:
             cur.execute('''
                 SELECT * FROM chat_history
                 WHERE user_id = %s
-                ORDER BY created_at DESC
-                LIMIT %s
+                ORDER BY created_at DESC LIMIT %s
             ''', (session['user_id'], limit))
         
         history = cur.fetchall()
@@ -827,8 +864,9 @@ def get_chat_history():
         })
         
     except Exception as e:
-        print(f"Error getting history: {e}")
+        logger.error(f"Error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @chat_bp.route('/api/clear', methods=['POST'])
 def clear_chat_history():
@@ -837,16 +875,20 @@ def clear_chat_history():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         project_id = data.get('project_id')
         
         cur = mysql.connection.cursor()
         
         if project_id:
-            cur.execute('''
-                DELETE FROM chat_history
-                WHERE user_id = %s AND project_id = %s
-            ''', (session['user_id'], project_id))
+            try:
+                project_id = int(project_id)
+                cur.execute('''
+                    DELETE FROM chat_history
+                    WHERE user_id = %s AND project_id = %s
+                ''', (session['user_id'], project_id))
+            except:
+                return jsonify({'success': False, 'error': 'Invalid project_id'}), 400
         else:
             cur.execute('''
                 DELETE FROM chat_history
@@ -859,8 +901,9 @@ def clear_chat_history():
         return jsonify({'success': True})
         
     except Exception as e:
-        print(f"Error clearing history: {e}")
+        logger.error(f"Error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @chat_bp.route('/api/suggestions')
 def get_suggestions():
@@ -879,14 +922,17 @@ def get_suggestions():
         ]
         
         if project_id:
-            project_context = get_project_context(int(project_id))
-            
-            if project_context:
-                if project_context.get('current_ndvi', 0) < 0.4:
-                    suggestions.insert(0, "Why is my vegetation health low?")
+            try:
+                project_context = get_project_context(int(project_id))
                 
-                if project_context.get('degradation') in ['severe', 'critical']:
-                    suggestions.insert(0, "What emergency actions should I take?")
+                if project_context:
+                    if project_context.get('current_ndvi', 0) < 0.4:
+                        suggestions.insert(0, "Why is my vegetation health low?")
+                    
+                    if project_context.get('degradation') in ['severe', 'critical']:
+                        suggestions.insert(0, "What emergency actions should I take?")
+            except:
+                pass
         
         return jsonify({
             'success': True,
@@ -894,7 +940,7 @@ def get_suggestions():
         })
         
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         return jsonify({
             'success': True,
             'suggestions': [
@@ -905,37 +951,199 @@ def get_suggestions():
         })
 
 
-# ========================
-# DATABASE FIX UTILITY
-# ========================
-
-def fix_database_charset():
-    """
-    Run this ONCE to fix emoji/UTF-8 issues.
-    Call from app.py after initializing chat:
+@chat_bp.route('/api/test', methods=['GET'])
+def test_chat():
+    """Test endpoint to verify chat is working"""
     
-    from app.chat import fix_database_charset
-    fix_database_charset()
-    """
+    # Check HF Router client
+    hf_router_status = "✅ Configured" if hf_client else "❌ Not configured"
+    hf_api_status = "✅ Configured" if (HUGGINGFACE_API_KEY and HUGGINGFACE_API_KEY != 'your_key_here') else "❌ Not configured"
+    
+    # Check OpenAI package
+    openai_status = "✅ Installed" if OPENAI_AVAILABLE else "❌ Not installed"
+    
+    # Check database columns
+    db_status = "Unknown"
+    db_columns = []
+    db_details = {}
+    try:
+        cur = mysql.connection.cursor()
+        cur.execute("DESCRIBE chat_history")
+        columns_data = cur.fetchall()
+        db_columns = [row[0] for row in columns_data]
+        
+        # Get detailed column info
+        for row in columns_data:
+            db_details[row[0]] = {
+                'type': row[1],
+                'null': row[2],
+                'key': row[3],
+                'default': row[4]
+            }
+        
+        cur.close()
+        
+        has_ai_method = 'ai_method' in db_columns
+        has_response_time = 'response_time_ms' in db_columns
+        
+        if has_ai_method and has_response_time:
+            db_status = "✅ All columns present"
+        elif has_ai_method or has_response_time:
+            db_status = "⚠️ Some columns missing"
+        else:
+            db_status = "⚠️ New columns not added yet (run migration)"
+    except Exception as e:
+        db_status = f"❌ Error: {str(e)}"
+    
+    # Determine which methods are available
+    available_methods = []
+    if hf_client:
+        available_methods.append("Hugging Face Router (PRIMARY)")
+    if HUGGINGFACE_API_KEY and HUGGINGFACE_API_KEY != 'your_key_here':
+        available_methods.append("Hugging Face Inference API (FALLBACK)")
+    available_methods.append("Intelligent Fallback (ALWAYS)")
+    
+    return jsonify({
+        'success': True,
+        'message': 'Chat API is operational!',
+        'status': {
+            'openai_package': openai_status,
+            'huggingface_router': hf_router_status,
+            'huggingface_inference': hf_api_status,
+            'database': db_status,
+            'database_columns': db_columns,
+            'database_details': db_details
+        },
+        'configuration': {
+            'model': HUGGINGFACE_MODEL,
+            'base_url': HUGGINGFACE_BASE_URL,
+            'fallback_models': WORKING_MODELS,
+            'max_tokens': int(os.getenv('AI_MAX_TOKENS', 300)),
+            'temperature': float(os.getenv('AI_TEMPERATURE', 0.7))
+        },
+        'available_methods': available_methods,
+        'cascade_order': [
+            '1. Hugging Face Router (OpenAI-compatible) - Best quality',
+            '2. Hugging Face Inference API (Direct) - Good fallback',
+            '3. Intelligent Fallback (Keyword-based) - Always works'
+        ],
+        'setup_instructions': {
+            'step_1': 'Install OpenAI package: pip install openai',
+            'step_2': 'Get Hugging Face API token: https://huggingface.co/settings/tokens',
+            'step_3': 'Add to .env: HUGGINGFACE_API_KEY=hf_your_token_here',
+            'step_4': 'Run migration: python migrate_chat_table.py',
+            'step_5': 'Restart your application'
+        }
+    })
+
+
+@chat_bp.route('/api/debug/db-test', methods=['POST'])
+def debug_db_test():
+    """Debug endpoint to test database insertion"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
     try:
         cur = mysql.connection.cursor()
         
-        cur.execute('''
-            ALTER TABLE chat_history 
-            CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-        ''')
+        # Get table structure
+        cur.execute("DESCRIBE chat_history")
+        columns_data = cur.fetchall()
+        columns = [row[0] for row in columns_data]
         
-        cur.execute('''
-            ALTER TABLE chat_history 
-            MODIFY message TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-            MODIFY response TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-        ''')
+        test_message = "Test message from debug endpoint"
+        test_response = "Test response"
+        test_context = json.dumps({'test': 'data'})
         
-        mysql.connection.commit()
+        results = {
+            'table_columns': columns,
+            'has_ai_method': 'ai_method' in columns,
+            'has_response_time_ms': 'response_time_ms' in columns,
+            'tests': []
+        }
+        
+        # Test 1: Try insert with new columns
+        if 'ai_method' in columns and 'response_time_ms' in columns:
+            try:
+                cur.execute('''
+                    INSERT INTO chat_history 
+                    (user_id, project_id, message, response, context, ai_method, response_time_ms)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ''', (
+                    session['user_id'],
+                    None,
+                    test_message,
+                    test_response,
+                    test_context,
+                    'test_method',
+                    100
+                ))
+                mysql.connection.commit()
+                results['tests'].append({'name': 'Insert with new columns', 'status': 'SUCCESS'})
+            except Exception as e:
+                mysql.connection.rollback()
+                results['tests'].append({
+                    'name': 'Insert with new columns',
+                    'status': 'FAILED',
+                    'error': f"{type(e).__name__}: {str(e)}"
+                })
+        
+        # Test 2: Try insert with old schema
+        try:
+            cur.execute('''
+                INSERT INTO chat_history 
+                (user_id, project_id, message, response, context)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (
+                session['user_id'],
+                None,
+                test_message + " (old schema)",
+                test_response,
+                test_context
+            ))
+            mysql.connection.commit()
+            results['tests'].append({'name': 'Insert with old schema', 'status': 'SUCCESS'})
+        except Exception as e:
+            mysql.connection.rollback()
+            results['tests'].append({
+                'name': 'Insert with old schema',
+                'status': 'FAILED',
+                'error': f"{type(e).__name__}: {str(e)}"
+            })
+        
+        # Test 3: Try minimal insert
+        try:
+            cur.execute('''
+                INSERT INTO chat_history 
+                (user_id, message, response)
+                VALUES (%s, %s, %s)
+            ''', (
+                session['user_id'],
+                test_message + " (minimal)",
+                test_response
+            ))
+            mysql.connection.commit()
+            results['tests'].append({'name': 'Minimal insert', 'status': 'SUCCESS'})
+        except Exception as e:
+            mysql.connection.rollback()
+            results['tests'].append({
+                'name': 'Minimal insert',
+                'status': 'FAILED',
+                'error': f"{type(e).__name__}: {str(e)}"
+            })
+        
         cur.close()
-        print("✅ Database charset fixed!")
-        return True
+        
+        return jsonify({
+            'success': True,
+            'results': results
+        })
         
     except Exception as e:
-        print(f"⚠️ Charset fix error: {e}")
-        return False
+        logger.error(f"Debug test error: {e}")
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
