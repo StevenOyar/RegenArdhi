@@ -119,6 +119,7 @@ MAIL_SENDER_EMAIL=your-email@gmail.com
 OPENWEATHER_API_KEY=your-openweather-api-key
 GOOGLE_MAPS_API_KEY=your-google-maps-api-key (optional)
 NASA_EARTH_API_KEY=DEMO_KEY
+HUGGINGFACE_API_KEY=your_hugging_face api key //
 ```
 
 ### 6. Initialize Database Tables
