@@ -734,5 +734,3 @@ def test_route():
         'message': 'Insights blueprint is working!',
         'routes': [str(rule) for rule in insights_bp.url_map.iter_rules()] if hasattr(insights_bp, 'url_map') else []
     })
-
-

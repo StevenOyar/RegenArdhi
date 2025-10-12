@@ -1,7 +1,9 @@
 # RegenArdhi
 PLP hackathon 
 
-
+Group Members
+1.Steven Oyaro 
+2.Damacline Moya - deemoya19@gmail.com
 
 # RegenArdhi - AI-Powered Land Restoration Platform
 

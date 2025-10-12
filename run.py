@@ -75,14 +75,16 @@ with app.app_context():
 # -------------------------
 # 📦 Register Blueprints
 # -------------------------
-print("\n=== Loading Modules ===")
+print("\n" + "="*80)
+print("🔧 LOADING MODULES")
+print("="*80)
 
 # Initialize Projects module
 try:
     from app.projects import projects_bp, init_projects
     init_projects(app, mysql)
     app.register_blueprint(projects_bp)
-    print("✅ Projects module loaded successfully!")
+    print(f"✅ Projects module loaded at: {projects_bp.url_prefix}")
 except Exception as e:
     print(f"❌ Failed to load Projects module: {e}")
     import traceback
@@ -93,19 +95,36 @@ try:
     from app.monitoring import monitoring_bp, init_monitoring
     init_monitoring(app, mysql)
     app.register_blueprint(monitoring_bp)
-    print("✅ Monitoring module loaded successfully!")
+    print(f"✅ Monitoring module loaded at: {monitoring_bp.url_prefix}")
 except Exception as e:
     print(f"❌ Failed to load Monitoring module: {e}")
     import traceback
     traceback.print_exc()
 
-# Initialize Insights module
+# Initialize Insights module - WITH EXPLICIT ERROR HANDLING
 try:
+    print("\n🔍 Loading Insights module...")
     from app.insights import insights_bp, init_insights
+    print(f"  → Blueprint imported: {insights_bp}")
+    print(f"  → URL prefix: {insights_bp.url_prefix}")
+    
+    # Initialize first
     init_insights(app, mysql)
+    print("  → Database initialized")
+    
+    # Then register
     app.register_blueprint(insights_bp)
-    print("✅ Insights module loaded successfully!")
-    print(f"  → Insights blueprint registered at: {insights_bp.url_prefix}")
+    print(f"✅ Insights module loaded successfully at: {insights_bp.url_prefix}")
+    
+    # Verify routes were registered
+    insights_routes = [str(rule) for rule in app.url_map.iter_rules() if 'insights' in str(rule)]
+    print(f"  → Registered routes: {insights_routes}")
+    
+except ImportError as e:
+    print(f"❌ Failed to import Insights module: {e}")
+    print("   → Check if app/insights.py exists")
+    import traceback
+    traceback.print_exc()
 except Exception as e:
     print(f"❌ Failed to load Insights module: {e}")
     import traceback
@@ -116,59 +135,112 @@ try:
     from app.chat import chat_bp, init_chat
     init_chat(app, mysql)
     app.register_blueprint(chat_bp)
-    print("✅ Chat module loaded successfully!")
+    print(f"✅ Chat module loaded at: {chat_bp.url_prefix}")
 except Exception as e:
     print(f"❌ Failed to load Chat module: {e}")
     import traceback
     traceback.print_exc()
 
-# Import and register main routes (LAST)
+# Import and register main routes (LAST - to avoid conflicts)
 try:
     from app.routes import main
     app.register_blueprint(main)
-    print("✅ Main routes loaded successfully!")
+    print(f"✅ Main routes loaded")
 except Exception as e:
     print(f"❌ Error loading routes: {e}")
     import traceback
     traceback.print_exc()
 
-print("\n=== All Modules Loaded ===")
+print("="*80 + "\n")
 
-# Print all registered routes for debugging
-print("\n=== Registered Routes ===")
-for rule in app.url_map.iter_rules():
-    methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
-    print(f"  {rule.endpoint:40s} {methods:15s} {rule.rule}")
-print("========================\n")
+# -------------------------
+# 🔍 DEBUG: Print all routes
+# -------------------------
+def print_all_routes():
+    print("\n" + "="*80)
+    print("🗺️  ALL REGISTERED ROUTES")
+    print("="*80)
+    
+    insights_found = False
+    
+    for rule in sorted(app.url_map.iter_rules(), key=lambda r: str(r)):
+        methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
+        route_str = f"{str(rule):50s} [{methods:15s}] -> {rule.endpoint}"
+        
+        if 'insights' in str(rule).lower():
+            print(f"✅ {route_str}")
+            insights_found = True
+        else:
+            print(f"   {route_str}")
+    
+    print("="*80)
+    
+    if not insights_found:
+        print("\n⚠️  WARNING: No insights routes found!")
+        print("   This means insights_bp was NOT registered correctly.")
+        print("\n   Troubleshooting steps:")
+        print("   1. Check if app/insights.py exists")
+        print("   2. Check if insights_bp = Blueprint('insights', __name__, url_prefix='/insights')")
+        print("   3. Check if app.register_blueprint(insights_bp) was called")
+        print("   4. Check for any import errors in insights.py")
+    else:
+        print("\n✅ Insights routes are registered correctly!")
+    
+    print("="*80 + "\n")
 
+print_all_routes()
 
+# -------------------------
+# 🧪 Test API Keys (Optional)
+# -------------------------
+print("🧪 Testing API Integrations...")
+try:
+    from app.api_integrations import OpenWeatherAPI, NASAPowerAPI
+    from datetime import datetime, timedelta
+    
+    # Test OpenWeather
+    print("  → Testing OpenWeather API...")
+    weather = OpenWeatherAPI.get_current_weather(-1.2921, 36.8219)
+    if weather:
+        print("  ✅ OpenWeather API working")
+    else:
+        print("  ⚠️  OpenWeather API failed")
+    
+    # Test NASA POWER
+    print("  → Testing NASA POWER API...")
+    climate = NASAPowerAPI.get_climate_data(
+        -1.2921, 36.8219,
+        datetime.now() - timedelta(days=7),
+        datetime.now()
+    )
+    if climate:
+        print("  ✅ NASA POWER API working")
+    else:
+        print("  ⚠️  NASA POWER API failed")
+        
+except Exception as e:
+    print(f"  ⚠️  API test failed: {e}")
 
-# Test API keys
-from app.api_integrations import OpenWeatherAPI, NASAPowerAPI
+print("\n" + "="*80)
 
-# Test OpenWeather
-weather = OpenWeatherAPI.get_current_weather(-1.2921, 36.8219)
-print(weather)
-
-# Test NASA POWER
-from datetime import datetime, timedelta
-climate = NASAPowerAPI.get_climate_data(
-    -1.2921, 36.8219,
-    datetime.now() - timedelta(days=7),
-    datetime.now()
-)
-print(climate)
-
+# -------------------------
+# 🚀 Run Server
+# -------------------------
 if __name__ == "__main__":
-    print("=" * 60)
-    print("🌿 RegenArdhi Server Starting...")
-    print("=" * 60)
-    print(f"SECRET_KEY: {'✅ Set' if app.secret_key else '❌ NOT SET'}")
-    print(f"MYSQL_HOST: {app.config.get('MYSQL_HOST')}")
-    print(f"MYSQL_USER: {app.config.get('MYSQL_USER')}")
-    print(f"MYSQL_DB: {app.config.get('MYSQL_DB')}")
-    print(f"MAIL_SERVER: {app.config.get('MAIL_SERVER')}")
-    print("=" * 60)
-    print("📡 Server running at http://127.0.0.1:5000")
-    print("=" * 60)
+    print("\n" + "="*80)
+    print("🌿 REGENARDHI SERVER")
+    print("="*80)
+    print(f"Environment: {'Development' if app.debug else 'Production'}")
+    print(f"Secret Key: {'✅ Set' if app.secret_key else '❌ NOT SET'}")
+    print(f"MySQL Host: {app.config.get('MYSQL_HOST')}")
+    print(f"MySQL User: {app.config.get('MYSQL_USER')}")
+    print(f"MySQL DB: {app.config.get('MYSQL_DB')}")
+    print(f"Mail Server: {app.config.get('MAIL_SERVER')}")
+    print("="*80)
+    print("\n🔗 Server URLs:")
+    print(f"  → Main: http://127.0.0.1:5000")
+    print(f"  → Insights: http://127.0.0.1:5000/insights/")
+    print(f"  → Insights Test: http://127.0.0.1:5000/insights/test")
+    print("\n" + "="*80 + "\n")
+    
     app.run(debug=True, host='127.0.0.1', port=5000)
