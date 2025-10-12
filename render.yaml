@@ -1,0 +1,40 @@
+services:
+  # Web Service
+  - type: web
+    name: regenardhi
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn run:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.7
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      - key: MYSQL_HOST
+        fromDatabase:
+          name: regenardhi-db
+          property: host
+      - key: MYSQL_USER
+        fromDatabase:
+          name: regenardhi-db
+          property: user
+      - key: MYSQL_PASSWORD
+        fromDatabase:
+          name: regenardhi-db
+          property: password
+      - key: MYSQL_DB
+        fromDatabase:
+          name: regenardhi-db
+          property: database
+
+databases:
+  - name: regenardhi-db
+    databaseName: regenardhi_db
+    user: regenardhi_user
+    plan: free
