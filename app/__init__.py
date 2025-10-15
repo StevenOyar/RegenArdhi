@@ -94,76 +94,111 @@ with app.app_context():
 # -------------------------------
 
 # Projects Module
+
+print("\n🔧 Loading application modules...")
+
+# Projects Module
 try:
     from app.projects import projects_bp, init_projects
     init_projects(app, mysql)
     app.register_blueprint(projects_bp)
-    print("✅ Projects module loaded successfully!")
+    print("✅ Projects module loaded")
+    # Debug: print registered routes
+    with app.app_context():
+        print(f"   Routes: {[str(r) for r in projects_bp.url_map.iter_rules() if r.endpoint.startswith('projects')]}")
 except Exception as e:
     print(f"❌ Failed to load Projects module: {e}")
+    import traceback
+    traceback.print_exc()
 
 # Monitoring Module
 try:
     from app.monitoring import monitoring_bp, init_monitoring
     init_monitoring(app, mysql)
     app.register_blueprint(monitoring_bp)
-    print("✅ Monitoring module loaded successfully!")
+    print("✅ Monitoring module loaded")
 except Exception as e:
     print(f"❌ Failed to load Monitoring module: {e}")
+    import traceback
+    traceback.print_exc()
 
-# Insights Module (NEW)
+# Insights Module (CRITICAL FIX)
 try:
+    print("\n🔍 Loading Insights module...")
     from app.insights import insights_bp, init_insights
+    
+    print(f"   Blueprint object: {insights_bp}")
+    print(f"   Blueprint name: {insights_bp.name}")
+    print(f"   Blueprint url_prefix: {insights_bp.url_prefix}")
+    
+    # Initialize the module
     init_insights(app, mysql)
+    
+    # Register the blueprint
     app.register_blueprint(insights_bp)
-    print("✅ Insights module loaded successfully!")
+    
+    print("✅ Insights module loaded and registered")
+    
+    # Verify routes were registered
+    with app.app_context():
+        insights_routes = [str(rule) for rule in app.url_map.iter_rules() if 'insights' in str(rule)]
+        print(f"   Registered Insights routes:")
+        for route in insights_routes:
+            print(f"     - {route}")
+    
 except Exception as e:
     print(f"❌ Failed to load Insights module: {e}")
+    import traceback
+    traceback.print_exc()
 
-# Chat Module (NEW)
+# Chat Module
 try:
     from app.chat import chat_bp, init_chat
     init_chat(app, mysql)
     app.register_blueprint(chat_bp)
-    print("✅ Chat module loaded successfully!")
+    print("✅ Chat module loaded")
 except Exception as e:
     print(f"❌ Failed to load Chat module: {e}")
+    import traceback
+    traceback.print_exc()
+
+# Dashboard Module
+try:
+    from app.dashboard import dashboard_bp, init_dashboard
+    init_dashboard(app, mysql)
+    app.register_blueprint(dashboard_bp)
+    print("✅ Dashboard module loaded")
+except Exception as e:
+    print(f"❌ Failed to load Dashboard module: {e}")
+    import traceback
+    traceback.print_exc()
 
 # -------------------------------
 #  Import Core Routes
 # -------------------------------
 try:
     from app import routes
-    print("✅ Core routes loaded successfully!")
+    print("✅ Core routes loaded")
 except Exception as e:
     print(f"❌ Error loading routes: {e}")
+    import traceback
+    traceback.print_exc()
 
-
-
-
-# In app/__init__.py
-
-# ... existing imports ...
-
-# Dashboard Module (ADD THIS)
-try:
-    from app.dashboard import dashboard_bp, init_dashboard
-    init_dashboard(app, mysql)
-    app.register_blueprint(dashboard_bp)
-    print("✅ Dashboard module loaded successfully!")
-except Exception as e:
-    print(f"❌ Failed to load Dashboard module: {e}")
-    
-    
-    
-print("\n" + "="*50)
+# -------------------------------
+#  Final Verification
+# -------------------------------
+print("\n" + "="*60)
 print("🌿 REGENARDHI - AI-POWERED LAND RESTORATION")
-print("="*50)
-print("✓ All modules initialized")
-print("✓ Database tables created")
-print("✓ API integrations ready:")
-print("  - NASA POWER API (Climate Data)")
-print("  - Hugging Face (AI Insights)")
-print("  - OpenStreetMap (Geocoding)")
-print("="*50 + "\n")
+print("="*60)
 
+# Print all registered routes for debugging
+with app.app_context():
+    print("\n📋 All Registered Routes:")
+    for rule in app.url_map.iter_rules():
+        methods = ','.join(rule.methods - {'HEAD', 'OPTIONS'})
+        print(f"   {rule.endpoint:30s} {methods:10s} {str(rule)}")
+
+print("\n✅ All modules initialized")
+print("✅ Database tables created")
+print("✅ API integrations ready")
+print("="*60 + "\n")

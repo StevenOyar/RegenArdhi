@@ -2,7 +2,6 @@ import os
 import requests
 import json
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
-from flask_mysqldb import MySQL
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import numpy as np
@@ -10,20 +9,20 @@ from collections import defaultdict
 
 load_dotenv()
 
-
-from app.api_integrations import NASAPowerAPI, OpenWeatherAPI, LandAnalysisService
-
-
-# Create Blueprint
+# ========================
+# BLUEPRINT CREATION
+# ========================
 insights_bp = Blueprint('insights', __name__, url_prefix='/insights')
 
-# MySQL connection (passed from main app)
+# MySQL connection (will be set by init_insights)
 mysql = None
 
 # API Keys
 NASA_POWER_API_KEY = os.getenv('NASA_POWER_API_KEY', 'DEMO_KEY')
 OPENWEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
 HUGGINGFACE_API_KEY = os.getenv('HUGGINGFACE_API_KEY')
+
+print("🔧 Insights Blueprint created successfully")
 
 # ========================
 # DATABASE INITIALIZATION
@@ -33,6 +32,8 @@ def init_insights(app, mysql_instance):
     """Initialize insights module with Flask app and MySQL instance"""
     global mysql
     mysql = mysql_instance
+    
+    print("🔧 Initializing Insights module...")
     
     with app.app_context():
         try:
@@ -85,6 +86,77 @@ def init_insights(app, mysql_instance):
             traceback.print_exc()
 
 # ========================
+# ROUTES
+# ========================
+
+@insights_bp.route('/')
+def insights_dashboard():
+    """Main insights dashboard"""
+    print(f"🎯 Insights dashboard route accessed")
+    print(f"   Session user_id: {session.get('user_id', 'None')}")
+    
+    if 'user_id' not in session:
+        print("   ⚠️ No user_id in session, redirecting to login")
+        return redirect(url_for('main.login'))
+    
+    print("   ✅ Rendering insights.html template")
+    return render_template('insights.html', user=session)
+
+@insights_bp.route('/test')
+def test_route():
+    """Test route to verify blueprint is working"""
+    return jsonify({
+        'success': True,
+        'message': 'Insights blueprint is working!',
+        'session': {
+            'logged_in': 'user_id' in session,
+            'user_id': session.get('user_id'),
+            'user_name': session.get('first_name')
+        },
+        'timestamp': datetime.now().isoformat()
+    })
+
+@insights_bp.route('/api/project/<int:project_id>/insights')
+def get_project_insights(project_id):
+    """Get AI insights for a project"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        insights = generate_comprehensive_insights(project_id)
+        
+        return jsonify({
+            'success': True,
+            'insights': insights,
+            'generated_at': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Error getting insights: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@insights_bp.route('/api/project/<int:project_id>/analytics')
+def get_project_analytics(project_id):
+    """Get analytics data for charts"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        period = request.args.get('period', '30d')
+        analytics = get_analytics_data(project_id, period)
+        
+        return jsonify({
+            'success': True,
+            'analytics': analytics
+        })
+        
+    except Exception as e:
+        print(f"Error getting analytics: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ========================
 # NASA POWER API INTEGRATION
 # ========================
 
@@ -134,24 +206,24 @@ def process_nasa_power_data(raw_data):
         # Calculate statistics
         return {
             'temperature': {
-                'avg': np.mean(temps) if temps else 0,
-                'min': np.min(temps) if temps else 0,
-                'max': np.max(temps) if temps else 0,
+                'avg': float(np.mean(temps)) if temps else 0,
+                'min': float(np.min(temps)) if temps else 0,
+                'max': float(np.max(temps)) if temps else 0,
                 'trend': calculate_trend(temps)
             },
             'rainfall': {
-                'total': np.sum(rainfall) if rainfall else 0,
-                'avg_daily': np.mean(rainfall) if rainfall else 0,
+                'total': float(np.sum(rainfall)) if rainfall else 0,
+                'avg_daily': float(np.mean(rainfall)) if rainfall else 0,
                 'days_with_rain': sum(1 for r in rainfall if r > 0)
             },
             'humidity': {
-                'avg': np.mean(humidity) if humidity else 0
+                'avg': float(np.mean(humidity)) if humidity else 0
             },
             'wind_speed': {
-                'avg': np.mean(wind_speed) if wind_speed else 0
+                'avg': float(np.mean(wind_speed)) if wind_speed else 0
             },
             'solar_radiation': {
-                'avg': np.mean(solar_rad) if solar_rad else 0
+                'avg': float(np.mean(solar_rad)) if solar_rad else 0
             },
             'raw_data': {
                 'dates': list(parameters.get('T2M', {}).keys()),
@@ -169,16 +241,12 @@ def process_nasa_power_data(raw_data):
 # VEGETATION ANALYSIS
 # ========================
 
-# FIX for insights.py
-# Replace the calculate_ndvi_trend function (around line 241)
-
 def calculate_ndvi_trend(project_id, days=90):
-    """Calculate NDVI trend from monitoring data - FIXED VERSION"""
+    """Calculate NDVI trend from monitoring data"""
     try:
         from MySQLdb.cursors import DictCursor
         cur = mysql.connection.cursor(DictCursor)
         
-        # FIX: Use 'ndvi' instead of 'vegetation_index'
         cur.execute('''
             SELECT ndvi, recorded_at
             FROM monitoring_data
@@ -210,8 +278,8 @@ def calculate_ndvi_trend(project_id, days=90):
             'trend': calculate_trend(ndvi_values),
             'values': ndvi_values,
             'dates': dates,
-            'avg': np.mean(ndvi_values),
-            'volatility': np.std(ndvi_values)
+            'avg': float(np.mean(ndvi_values)),
+            'volatility': float(np.std(ndvi_values))
         }
         
     except Exception as e:
@@ -219,6 +287,7 @@ def calculate_ndvi_trend(project_id, days=90):
         import traceback
         traceback.print_exc()
         return None
+
 # ========================
 # AI INSIGHTS GENERATION
 # ========================
@@ -326,7 +395,7 @@ def generate_soil_insights(project, monitoring_data):
     erosion_risk = monitoring_data.get('erosion_risk', 'medium')
     
     # Soil Moisture Analysis
-    if soil_moisture < 20:
+    if soil_moisture and soil_moisture < 20:
         insights.append({
             'type': 'warning',
             'category': 'soil',
@@ -340,7 +409,7 @@ def generate_soil_insights(project, monitoring_data):
                 'Monitor daily until moisture improves'
             ]
         })
-    elif soil_moisture > 80:
+    elif soil_moisture and soil_moisture > 80:
         insights.append({
             'type': 'info',
             'category': 'soil',
@@ -356,7 +425,7 @@ def generate_soil_insights(project, monitoring_data):
         })
     
     # pH Analysis
-    if soil_ph < 5.5:
+    if soil_ph and soil_ph < 5.5:
         insights.append({
             'type': 'warning',
             'category': 'soil',
@@ -370,7 +439,7 @@ def generate_soil_insights(project, monitoring_data):
                 'Retest pH after amendments'
             ]
         })
-    elif soil_ph > 8.5:
+    elif soil_ph and soil_ph > 8.5:
         insights.append({
             'type': 'warning',
             'category': 'soil',
@@ -613,57 +682,9 @@ def get_analytics_data(project_id, period='30d'):
         
     except Exception as e:
         print(f"Error getting analytics data: {e}")
+        import traceback
+        traceback.print_exc()
         return {'ndvi': [], 'climate': [], 'soil': []}
-
-# ========================
-# API ROUTES
-# ========================
-
-@insights_bp.route('/')
-def insights_dashboard():
-    """Main insights dashboard"""
-    if 'user_id' not in session:
-        return redirect(url_for('main.login'))
-    
-    return render_template('insights.html', user=session)
-
-@insights_bp.route('/api/project/<int:project_id>/insights')
-def get_project_insights(project_id):
-    """Get AI insights for a project"""
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-    
-    try:
-        insights = generate_comprehensive_insights(project_id)
-        
-        return jsonify({
-            'success': True,
-            'insights': insights,
-            'generated_at': datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        print(f"Error getting insights: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@insights_bp.route('/api/project/<int:project_id>/analytics')
-def get_project_analytics(project_id):
-    """Get analytics data for charts"""
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-    
-    try:
-        period = request.args.get('period', '30d')
-        analytics = get_analytics_data(project_id, period)
-        
-        return jsonify({
-            'success': True,
-            'analytics': analytics
-        })
-        
-    except Exception as e:
-        print(f"Error getting analytics: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ========================
 # HELPER FUNCTIONS
@@ -674,64 +695,31 @@ def calculate_trend(values):
     if not values or len(values) < 2:
         return 'stable'
     
-    # Simple linear regression
-    n = len(values)
-    x = list(range(n))
-    y = values
-    
-    x_mean = np.mean(x)
-    y_mean = np.mean(y)
-    
-    numerator = sum((x[i] - x_mean) * (y[i] - y_mean) for i in range(n))
-    denominator = sum((x[i] - x_mean) ** 2 for i in range(n))
-    
-    if denominator == 0:
-        return 'stable'
-    
-    slope = numerator / denominator
-    
-    if slope > 0.01:
-        return 'improving'
-    elif slope < -0.01:
-        return 'declining'
-    else:
-        return 'stable'
-    
-    
-
-
-def get_real_time_analytics(project_id, period='30d'):
-    """Get real-time analytics with API data"""
     try:
-        # ... existing code to get project ...
+        # Simple linear regression
+        n = len(values)
+        x = list(range(n))
+        y = values
         
-        # Get real-time climate data
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=int(period.replace('d', '')))
+        x_mean = np.mean(x)
+        y_mean = np.mean(y)
         
-        climate_data = NASAPowerAPI.get_climate_data(
-            project['latitude'],
-            project['longitude'],
-            start_date,
-            end_date
-        )
+        numerator = sum((x[i] - x_mean) * (y[i] - y_mean) for i in range(n))
+        denominator = sum((x[i] - x_mean) ** 2 for i in range(n))
         
-        # Merge with database monitoring data
-        # ... rest of your code ...
+        if denominator == 0:
+            return 'stable'
         
+        slope = numerator / denominator
+        
+        if slope > 0.01:
+            return 'improving'
+        elif slope < -0.01:
+            return 'declining'
+        else:
+            return 'stable'
     except Exception as e:
-        print(f"Error getting real-time analytics: {e}")
-        # Fallback to database-only data
+        print(f"Error calculating trend: {e}")
+        return 'stable'
 
-
-# Add this to insights.py temporarily to test if the blueprint is working
-
-@insights_bp.route('/test')
-def test_route():
-    """Test route to verify blueprint is working"""
-    return jsonify({
-        'success': True,
-        'message': 'Insights blueprint is working!',
-        'routes': [str(rule) for rule in insights_bp.url_map.iter_rules()] if hasattr(insights_bp, 'url_map') else []
-    })
-    
+print("✅ Insights module fully loaded - all routes and functions defined")

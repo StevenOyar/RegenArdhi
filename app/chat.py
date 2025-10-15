@@ -641,6 +641,7 @@ def query_ai(user_message, context_info=""):
 # ========================
 
 @chat_bp.route('/api/message', methods=['POST'])
+@chat_bp.route('/api/message', methods=['POST'])
 def chat_message():
     """Handle chat message"""
     if 'user_id' not in session:
@@ -658,9 +659,27 @@ def chat_message():
         if len(user_message) > 1000:
             return jsonify({'success': False, 'error': 'Message too long'}), 400
         
+        # VALIDATE PROJECT_ID - Check if project exists and belongs to user
         if project_id is not None:
             try:
                 project_id = int(project_id)
+                
+                # Verify project exists and belongs to user
+                cur = mysql.connection.cursor()
+                cur.execute(
+                    'SELECT id FROM projects WHERE id = %s AND user_id = %s',
+                    (project_id, session['user_id'])
+                )
+                project_exists = cur.fetchone()
+                cur.close()
+                
+                if not project_exists:
+                    logger.warning(f"Invalid project_id {project_id} for user {session['user_id']}")
+                    return jsonify({
+                        'success': False, 
+                        'error': 'Project not found or access denied'
+                    }), 404
+                    
             except (ValueError, TypeError):
                 return jsonify({'success': False, 'error': 'Invalid project_id'}), 400
         
@@ -755,15 +774,14 @@ def chat_message():
                 
                 # Try basic insert without context as last resort
                 try:
-                    logger.warning("Attempting basic insert without context...")
+                    logger.warning("Attempting basic insert without project_id...")
                     if has_new_columns:
                         cur.execute('''
                             INSERT INTO chat_history 
-                            (user_id, project_id, message, response, ai_method, response_time_ms)
-                            VALUES (%s, %s, %s, %s, %s, %s)
+                            (user_id, message, response, ai_method, response_time_ms)
+                            VALUES (%s, %s, %s, %s, %s)
                         ''', (
                             session['user_id'],
-                            project_id,
                             user_message,
                             ai_response,
                             ai_method,
@@ -772,16 +790,15 @@ def chat_message():
                     else:
                         cur.execute('''
                             INSERT INTO chat_history 
-                            (user_id, project_id, message, response)
-                            VALUES (%s, %s, %s, %s)
+                            (user_id, message, response)
+                            VALUES (%s, %s, %s)
                         ''', (
                             session['user_id'],
-                            project_id,
                             user_message,
                             ai_response
                         ))
                     mysql.connection.commit()
-                    logger.info("✅ Saved with basic insert")
+                    logger.info("✅ Saved with basic insert (no project_id)")
                 except Exception as basic_error:
                     logger.error(f"⚠️ Even basic insert failed: {type(basic_error).__name__}: {basic_error}")
                     mysql.connection.rollback()
@@ -816,7 +833,6 @@ def chat_message():
             'error': 'Failed to generate response',
             'details': str(e)
         }), 500
-
 
 @chat_bp.route('/api/history')
 def get_chat_history():
