@@ -44,7 +44,7 @@ WORKING_MODELS = [
 
 # Initialize OpenAI-compatible client for Hugging Face
 hf_client = None
-if OPENAI_AVAILABLE and HUGGINGFACE_API_KEY and HUGGINGFACE_API_KEY != 'your_key_here':
+if OPENAI_AVAILABLE and HUGGINGFACE_API_KEY and HUGGINGFACE_API_KEY != ' HUGGINGFACE_API_KEY':
     try:
         # FIX: Remove proxies argument - not supported in newer versions
         hf_client = OpenAI(

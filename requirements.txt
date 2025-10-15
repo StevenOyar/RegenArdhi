@@ -1,17 +1,22 @@
+# Build essentials
 setuptools>=68.0.0
 wheel
 build
 
+# Core Framework
 Flask==3.0.0
 Flask-Mail==0.9.1
 Flask-MySQLdb==2.0.0
 mysqlclient==2.2.0
 python-dotenv==1.0.0
 Werkzeug==3.0.1
-requests==2.31.0
-numpy==1.26.4  # Changed from 1.24.3 - supports Python 3.13
 gunicorn==21.2.0
-openai==1.3.0
+
+# Core Utilities
+requests==2.31.0
+numpy==1.26.4  # Compatible with Python 3.13
+
+# AI / LLM Integrations
+openai>=1.45.0  # ✅ Force new version — fully supports base_url (no proxies arg)
 huggingface_hub==0.25.2
 transformers==4.45.0
-
