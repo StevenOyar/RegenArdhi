@@ -39,14 +39,17 @@ app.config.update(
 # -------------------------------
 #  MySQL Configuration
 # -------------------------------
+# -------------------------------
+#  MySQL Configuration
+# -------------------------------
 app.config.update(
     MYSQL_HOST=os.getenv("MYSQL_HOST", "localhost"),
     MYSQL_USER=os.getenv("MYSQL_USER", "root"),
     MYSQL_PASSWORD=os.getenv("MYSQL_PASSWORD", ""),
     MYSQL_DB=os.getenv("MYSQL_DB", "regenardhi_db"),
+    MYSQL_PORT=int(os.getenv("MYSQL_PORT", 3306)),  # ADD THIS LINE
     MYSQL_CURSORCLASS='DictCursor'
 )
-
 # -------------------------------
 #  Initialize Extensions
 # -------------------------------
