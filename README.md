@@ -5,6 +5,9 @@ Group Members
 1.Steven Oyaro 
 2.Damacline Moya - deemoya19@gmail.com
 
+## Live Demo
+[RegenArdhi](https://regenardhi.onrender.com/)
+
 # RegenArdhi - AI-Powered Land Restoration Platform
 
 ## Overview
