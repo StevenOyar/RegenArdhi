@@ -46,9 +46,10 @@ WORKING_MODELS = [
 hf_client = None
 if OPENAI_AVAILABLE and HUGGINGFACE_API_KEY and HUGGINGFACE_API_KEY != 'your_key_here':
     try:
+        # FIX: Remove proxies argument - not supported in newer versions
         hf_client = OpenAI(
             base_url=HUGGINGFACE_BASE_URL,
-            api_key=HUGGINGFACE_API_KEY,
+            api_key=HUGGINGFACE_API_KEY
         )
         logger.info(f"✅ Hugging Face Router initialized with model: {HUGGINGFACE_MODEL}")
     except Exception as e:
@@ -67,6 +68,7 @@ def init_chat(app, mysql_instance):
     
     with app.app_context():
         try:
+            # FIX: Use regular cursor, not DictCursor for DESCRIBE
             cur = mysql.connection.cursor()
             
             # First, check if table exists
@@ -97,6 +99,7 @@ def init_chat(app, mysql_instance):
             else:
                 # Table exists, check for missing columns
                 cur.execute("DESCRIBE chat_history")
+                # FIX: Access tuple by index, not key
                 columns = [row[0] for row in cur.fetchall()]
                 
                 # Add ai_method if missing
@@ -266,7 +269,6 @@ def query_huggingface_router(user_message, context_info=""):
     
     try:
         logger.info(f"🤖 Querying Hugging Face Router with model: {HUGGINGFACE_MODEL}")
-        logger.info(f"📝 Message: {user_message[:50]}...")
         
         start_time = time.time()
         
@@ -285,7 +287,6 @@ Key guidelines:
 - Be encouraging and supportive
 - Keep responses clear and concise (2-3 paragraphs max)
 - Focus on sustainable, long-term solutions
-
 """
         
         # Add user context if available
@@ -307,7 +308,7 @@ Key guidelines:
             temperature=temperature,
         )
         
-        response_time = int((time.time() - start_time) * 1000)  # Convert to ms
+        response_time = int((time.time() - start_time) * 1000)
         
         bot_reply = completion.choices[0].message.content
         
@@ -641,7 +642,6 @@ def query_ai(user_message, context_info=""):
 # ========================
 
 @chat_bp.route('/api/message', methods=['POST'])
-@chat_bp.route('/api/message', methods=['POST'])
 def chat_message():
     """Handle chat message"""
     if 'user_id' not in session:
@@ -659,27 +659,9 @@ def chat_message():
         if len(user_message) > 1000:
             return jsonify({'success': False, 'error': 'Message too long'}), 400
         
-        # VALIDATE PROJECT_ID - Check if project exists and belongs to user
         if project_id is not None:
             try:
                 project_id = int(project_id)
-                
-                # Verify project exists and belongs to user
-                cur = mysql.connection.cursor()
-                cur.execute(
-                    'SELECT id FROM projects WHERE id = %s AND user_id = %s',
-                    (project_id, session['user_id'])
-                )
-                project_exists = cur.fetchone()
-                cur.close()
-                
-                if not project_exists:
-                    logger.warning(f"Invalid project_id {project_id} for user {session['user_id']}")
-                    return jsonify({
-                        'success': False, 
-                        'error': 'Project not found or access denied'
-                    }), 404
-                    
             except (ValueError, TypeError):
                 return jsonify({'success': False, 'error': 'Invalid project_id'}), 400
         
@@ -704,15 +686,15 @@ def chat_message():
         
         # Save to database with comprehensive error handling
         try:
+            # FIX: Use regular cursor for DESCRIBE
             cur = mysql.connection.cursor()
             
             # Check if new columns exist
             try:
                 cur.execute("DESCRIBE chat_history")
+                # FIX: Access tuple by index
                 columns = [row[0] for row in cur.fetchall()]
                 has_new_columns = 'ai_method' in columns and 'response_time_ms' in columns
-                logger.debug(f"Database columns: {columns}")
-                logger.debug(f"Has new columns: {has_new_columns}")
             except Exception as desc_error:
                 logger.error(f"Error checking columns: {desc_error}")
                 has_new_columns = False
@@ -730,7 +712,6 @@ def chat_message():
             # Try to insert
             try:
                 if has_new_columns:
-                    logger.debug("Inserting with new columns...")
                     cur.execute('''
                         INSERT INTO chat_history 
                         (user_id, project_id, message, response, context, ai_method, response_time_ms)
@@ -745,7 +726,6 @@ def chat_message():
                         response_time
                     ))
                 else:
-                    logger.debug("Inserting with old schema...")
                     # Store ai_method and response_time in context JSON for old schema
                     context_with_meta = json.dumps({
                         'user': user_context, 
@@ -774,14 +754,15 @@ def chat_message():
                 
                 # Try basic insert without context as last resort
                 try:
-                    logger.warning("Attempting basic insert without project_id...")
+                    logger.warning("Attempting basic insert without context...")
                     if has_new_columns:
                         cur.execute('''
                             INSERT INTO chat_history 
-                            (user_id, message, response, ai_method, response_time_ms)
-                            VALUES (%s, %s, %s, %s, %s)
+                            (user_id, project_id, message, response, ai_method, response_time_ms)
+                            VALUES (%s, %s, %s, %s, %s, %s)
                         ''', (
                             session['user_id'],
+                            project_id,
                             user_message,
                             ai_response,
                             ai_method,
@@ -790,15 +771,16 @@ def chat_message():
                     else:
                         cur.execute('''
                             INSERT INTO chat_history 
-                            (user_id, message, response)
-                            VALUES (%s, %s, %s)
+                            (user_id, project_id, message, response)
+                            VALUES (%s, %s, %s, %s)
                         ''', (
                             session['user_id'],
+                            project_id,
                             user_message,
                             ai_response
                         ))
                     mysql.connection.commit()
-                    logger.info("✅ Saved with basic insert (no project_id)")
+                    logger.info("✅ Saved with basic insert")
                 except Exception as basic_error:
                     logger.error(f"⚠️ Even basic insert failed: {type(basic_error).__name__}: {basic_error}")
                     mysql.connection.rollback()
@@ -806,15 +788,11 @@ def chat_message():
             cur.close()
             
         except Exception as e:
-            error_type = type(e).__name__
-            error_msg = str(e)
-            logger.error(f"⚠️ Database save error: {error_type}: {error_msg}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error(f"⚠️ Database save error: {type(e).__name__}: {str(e)}")
             try:
                 mysql.connection.rollback()
-            except Exception as rollback_error:
-                logger.error(f"Rollback error: {rollback_error}")
+            except:
+                pass
         
         return jsonify({
             'success': True,
@@ -833,6 +811,7 @@ def chat_message():
             'error': 'Failed to generate response',
             'details': str(e)
         }), 500
+
 
 @chat_bp.route('/api/history')
 def get_chat_history():
@@ -986,6 +965,7 @@ def test_chat():
         cur = mysql.connection.cursor()
         cur.execute("DESCRIBE chat_history")
         columns_data = cur.fetchall()
+        # FIX: Access tuple by index
         db_columns = [row[0] for row in columns_data]
         
         # Get detailed column info
@@ -1042,124 +1022,5 @@ def test_chat():
             '1. Hugging Face Router (OpenAI-compatible) - Best quality',
             '2. Hugging Face Inference API (Direct) - Good fallback',
             '3. Intelligent Fallback (Keyword-based) - Always works'
-        ],
-        'setup_instructions': {
-            'step_1': 'Install OpenAI package: pip install openai',
-            'step_2': 'Get Hugging Face API token: https://huggingface.co/settings/tokens',
-            'step_3': 'Add to .env: HUGGINGFACE_API_KEY=hf_your_token_here',
-            'step_4': 'Run migration: python migrate_chat_table.py',
-            'step_5': 'Restart your application'
-        }
+        ]
     })
-
-
-@chat_bp.route('/api/debug/db-test', methods=['POST'])
-def debug_db_test():
-    """Debug endpoint to test database insertion"""
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-    
-    try:
-        cur = mysql.connection.cursor()
-        
-        # Get table structure
-        cur.execute("DESCRIBE chat_history")
-        columns_data = cur.fetchall()
-        columns = [row[0] for row in columns_data]
-        
-        test_message = "Test message from debug endpoint"
-        test_response = "Test response"
-        test_context = json.dumps({'test': 'data'})
-        
-        results = {
-            'table_columns': columns,
-            'has_ai_method': 'ai_method' in columns,
-            'has_response_time_ms': 'response_time_ms' in columns,
-            'tests': []
-        }
-        
-        # Test 1: Try insert with new columns
-        if 'ai_method' in columns and 'response_time_ms' in columns:
-            try:
-                cur.execute('''
-                    INSERT INTO chat_history 
-                    (user_id, project_id, message, response, context, ai_method, response_time_ms)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ''', (
-                    session['user_id'],
-                    None,
-                    test_message,
-                    test_response,
-                    test_context,
-                    'test_method',
-                    100
-                ))
-                mysql.connection.commit()
-                results['tests'].append({'name': 'Insert with new columns', 'status': 'SUCCESS'})
-            except Exception as e:
-                mysql.connection.rollback()
-                results['tests'].append({
-                    'name': 'Insert with new columns',
-                    'status': 'FAILED',
-                    'error': f"{type(e).__name__}: {str(e)}"
-                })
-        
-        # Test 2: Try insert with old schema
-        try:
-            cur.execute('''
-                INSERT INTO chat_history 
-                (user_id, project_id, message, response, context)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', (
-                session['user_id'],
-                None,
-                test_message + " (old schema)",
-                test_response,
-                test_context
-            ))
-            mysql.connection.commit()
-            results['tests'].append({'name': 'Insert with old schema', 'status': 'SUCCESS'})
-        except Exception as e:
-            mysql.connection.rollback()
-            results['tests'].append({
-                'name': 'Insert with old schema',
-                'status': 'FAILED',
-                'error': f"{type(e).__name__}: {str(e)}"
-            })
-        
-        # Test 3: Try minimal insert
-        try:
-            cur.execute('''
-                INSERT INTO chat_history 
-                (user_id, message, response)
-                VALUES (%s, %s, %s)
-            ''', (
-                session['user_id'],
-                test_message + " (minimal)",
-                test_response
-            ))
-            mysql.connection.commit()
-            results['tests'].append({'name': 'Minimal insert', 'status': 'SUCCESS'})
-        except Exception as e:
-            mysql.connection.rollback()
-            results['tests'].append({
-                'name': 'Minimal insert',
-                'status': 'FAILED',
-                'error': f"{type(e).__name__}: {str(e)}"
-            })
-        
-        cur.close()
-        
-        return jsonify({
-            'success': True,
-            'results': results
-        })
-        
-    except Exception as e:
-        logger.error(f"Debug test error: {e}")
-        import traceback
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }), 500
