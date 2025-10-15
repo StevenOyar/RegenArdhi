@@ -166,3 +166,4 @@ print("  - NASA POWER API (Climate Data)")
 print("  - Hugging Face (AI Insights)")
 print("  - OpenStreetMap (Geocoding)")
 print("="*50 + "\n")
+
