@@ -510,6 +510,7 @@ def comprehensive_land_analysis(latitude, longitude, area_hectares):
 # DATABASE INITIALIZATION
 # ========================
 
+
 def init_projects(app, mysql_instance):
     """Initialize projects module with Flask app and MySQL instance"""
     global mysql
@@ -569,22 +570,32 @@ def init_projects(app, mysql_instance):
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ''')
             
-            # Check if elevation column exists, if not add it
-            cur.execute('''
-                SELECT COUNT(*) 
-                FROM information_schema.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'projects' 
-                AND COLUMN_NAME = 'elevation'
-            ''')
-            
-            if cur.fetchone()[0] == 0:
-                print("⚠️ Adding 'elevation' column to projects table...")
+            # FIX: Check if elevation column exists using proper cursor access
+            try:
                 cur.execute('''
-                    ALTER TABLE projects 
-                    ADD COLUMN elevation INT DEFAULT 0 AFTER humidity
+                    SELECT COLUMN_NAME 
+                    FROM information_schema.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'projects' 
+                    AND COLUMN_NAME = 'elevation'
                 ''')
-                print("✅ 'elevation' column added successfully!")
+                
+                result = cur.fetchone()
+                
+                # If result is None or empty, column doesn't exist
+                if not result:
+                    print("⚠️ Adding 'elevation' column to projects table...")
+                    cur.execute('''
+                        ALTER TABLE projects 
+                        ADD COLUMN elevation INT DEFAULT 0 AFTER humidity
+                    ''')
+                    print("✅ 'elevation' column added successfully!")
+                else:
+                    print("✅ 'elevation' column already exists")
+                    
+            except Exception as col_check_error:
+                print(f"⚠️ Column check error (non-critical): {col_check_error}")
+                # Continue anyway - the column might already exist
             
             mysql.connection.commit()
             cur.close()
@@ -594,6 +605,7 @@ def init_projects(app, mysql_instance):
             print(f"❌ Error initializing projects tables: {e}")
             import traceback
             traceback.print_exc()
+
 
 # ========================
 # API ROUTES
