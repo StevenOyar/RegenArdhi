@@ -1239,7 +1239,6 @@ header {
     font-weight: 600;
     color: var(--gray-700);
     font-size: 0.9375rem;
-    display: flex;
     align-items: center;
     gap: 0.5rem;
 }
