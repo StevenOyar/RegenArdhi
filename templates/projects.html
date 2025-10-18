@@ -24,11 +24,11 @@
             </ul>
             <div class="nav-actions">
                 <button class="btn btn-primary" id="quickCreateBtn">
-                    <i class="fas fa-bolt"></i> Quick Create
+                    <i class="fas fa-plus"></i> New Project
                 </button>
                 <button class="btn-icon notification-btn" id="notificationBtn">
                     <i class="fas fa-bell"></i>
-                    <span class="notification-badge" id="notificationBadge">0</span>
+                    <span class="notification-badge hidden" id="notificationBadge">0</span>
                 </button>
                 <div class="user-menu">
                     <button class="user-btn" id="userMenuBtn">
@@ -70,184 +70,148 @@
 
     <!-- Main Content -->
     <main class="projects-main">
-        <!-- Stats Bar -->
-        <section class="stats-bar">
-            <div class="stat-item">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
-                    <i class="fas fa-project-diagram"></i>
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <div class="hero-content">
+                <div class="hero-text">
+                    <h1 class="hero-title">Your Land Restoration Projects</h1>
+                    <p class="hero-subtitle">Monitor, manage, and grow your environmental impact</p>
                 </div>
-                <div class="stat-content">
-                    <span class="stat-value" id="totalProjects">0</span>
-                    <span class="stat-label">Total Projects</span>
-                </div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #10b981, #059669);">
-                    <i class="fas fa-play-circle"></i>
-                </div>
-                <div class="stat-content">
-                    <span class="stat-value" id="activeProjects">0</span>
-                    <span class="stat-label">Active</span>
+                <div class="hero-actions">
+                    <button class="btn btn-create" onclick="openProjectModal()">
+                        <i class="fas fa-plus"></i> New Project
+                    </button>
+                    <button class="btn btn-quick-create" onclick="handleQuickCreate()">
+                        <i class="fas fa-bolt"></i> Quick Create
+                    </button>
                 </div>
             </div>
-            <div class="stat-item">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                    <i class="fas fa-check-circle"></i>
+            <div class="hero-stats">
+                <div class="hero-stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-project-diagram"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-number" id="totalProjects">0</div>
+                        <div class="stat-label">Total Projects</div>
+                    </div>
                 </div>
-                <div class="stat-content">
-                    <span class="stat-value" id="completedProjects">0</span>
-                    <span class="stat-label">Completed</span>
+                <div class="hero-stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-map-marked-alt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-number" id="totalArea">0</div>
+                        <div class="stat-label">Hectares</div>
+                    </div>
                 </div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
-                    <i class="fas fa-globe-africa"></i>
-                </div>
-                <div class="stat-content">
-                    <span class="stat-value" id="totalArea">0</span>
-                    <span class="stat-label">Hectares</span>
+                <div class="hero-stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-seedling"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-number" id="activeProjects">0</div>
+                        <div class="stat-label">Active</div>
+                    </div>
                 </div>
             </div>
         </section>
 
-        <!-- Main Layout -->
-        <section class="main-layout">
-            <!-- Left Sidebar -->
-            <aside class="sidebar">
-                <!-- Quick Actions -->
-                <div class="card quick-actions">
-                    <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
-                    <button class="btn btn-success btn-block" id="newProjectBtn">
-                        <i class="fas fa-plus"></i> New Project
-                    </button>
-                    <button class="btn btn-outline btn-block" id="viewAllBtn">
-                        <i class="fas fa-th-list"></i> View All Projects
-                    </button>
+        <!-- Map Section (Collapsible) -->
+        <section class="map-section collapsed" id="mapSection">
+            <button class="map-toggle-btn" onclick="toggleMap()">
+                <i class="fas fa-map"></i>
+                <span id="mapToggleText">Show Project Map</span>
+                <i class="fas fa-chevron-down" id="mapToggleIcon"></i>
+            </button>
+            <div class="map-container" id="mapContainer">
+                <div id="projectsMap" class="map"></div>
+                <div class="map-legend">
+                    <div class="legend-item">
+                        <span class="marker-dot planning"></span>
+                        <span>Planning</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="marker-dot active"></span>
+                        <span>Active</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="marker-dot completed"></span>
+                        <span>Completed</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="marker-dot paused"></span>
+                        <span>Paused</span>
+                    </div>
                 </div>
+            </div>
+        </section>
 
-                <!-- Status Filter -->
-                <div class="card filter-card">
-                    <h3><i class="fas fa-filter"></i> Filter by Status</h3>
-                    <div class="status-filters">
-                        <button class="status-filter-btn active" data-status="all">
-                            <i class="fas fa-globe"></i> All
-                            <span class="count" id="countAll">0</span>
-                        </button>
-                        <button class="status-filter-btn" data-status="active">
-                            <i class="fas fa-play-circle"></i> Active
-                            <span class="count" id="countActive">0</span>
-                        </button>
-                        <button class="status-filter-btn" data-status="planning">
-                            <i class="fas fa-drafting-compass"></i> Planning
-                            <span class="count" id="countPlanning">0</span>
-                        </button>
-                        <button class="status-filter-btn" data-status="completed">
-                            <i class="fas fa-check-circle"></i> Completed
-                            <span class="count" id="countCompleted">0</span>
-                        </button>
-                        <button class="status-filter-btn" data-status="paused">
-                            <i class="fas fa-pause-circle"></i> Paused
-                            <span class="count" id="countPaused">0</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Recent Activity -->
-                <div class="card activity-card">
-                    <h3><i class="fas fa-history"></i> Recent Activity</h3>
-                    <div class="activity-list" id="recentActivity">
-                        <div class="activity-item">
-                            <i class="fas fa-info-circle"></i>
-                            <span>No recent activity</span>
-                        </div>
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Main Content Area -->
-            <div class="main-content">
-                <!-- Map Section -->
-                <div class="map-container">
-                    <div class="map-header">
-                        <h2><i class="fas fa-map"></i> Projects Map</h2>
-                        <div class="map-controls">
-                            <button class="btn-icon" onclick="centerMap()" title="Center Map">
-                                <i class="fas fa-crosshairs"></i>
-                            </button>
-                            <button class="btn-icon" onclick="toggleFullscreen()" title="Fullscreen">
-                                <i class="fas fa-expand"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div id="projectsMap" class="map"></div>
-                    <div class="map-legend">
-                        <div class="legend-item">
-                            <span class="marker-dot" style="background: #10b981;"></span>
-                            <span>Active</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="marker-dot" style="background: #3b82f6;"></span>
-                            <span>Planning</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="marker-dot" style="background: #8b5cf6;"></span>
-                            <span>Completed</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="marker-dot" style="background: #f59e0b;"></span>
-                            <span>Paused</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Projects Grid -->
-                <div class="projects-section">
-                    <div class="section-header">
-                        <h2><i class="fas fa-seedling"></i> <span id="sectionTitle">All Projects</span></h2>
-                        <div class="section-actions">
-                            <div class="search-box">
-                                <i class="fas fa-search"></i>
-                                <input type="text" id="searchProjects" placeholder="Search projects...">
-                            </div>
-                            <select id="projectsPerPage" class="sort-select">
-                                <option value="6">Show 6</option>
-                                <option value="12" selected>Show 12</option>
-                                <option value="24">Show 24</option>
-                                <option value="all">Show All</option>
-                            </select>
-                            <select id="sortProjects" class="sort-select">
-                                <option value="recent">Most Recent</option>
-                                <option value="name">Name (A-Z)</option>
-                                <option value="area">Area (Largest)</option>
-                                <option value="progress">Progress</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div id="projectsGrid" class="projects-grid">
-                        <div class="loading-state">
-                            <i class="fas fa-spinner fa-spin"></i>
-                            <p>Loading projects...</p>
-                        </div>
-                    </div>
-                    <!-- Pagination -->
-                    <div class="pagination-container" id="paginationContainer" style="display: none;">
-                        <div class="pagination-info">
-                            Showing <strong id="showingStart">1</strong> to <strong id="showingEnd">12</strong> of <strong id="totalProjects">0</strong> projects
-                        </div>
-                        <div class="pagination-controls">
-                            <button class="btn-icon" id="prevPage" onclick="changePage(-1)" disabled>
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
-                            <div class="pagination-pages" id="paginationPages"></div>
-                            <button class="btn-icon" id="nextPage" onclick="changePage(1)">
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
+        <!-- Recent Projects Highlight -->
+        <section class="recent-projects-section" id="recentProjectsSection" style="display: none;">
+            <div class="section-header-inline">
+                <h2><i class="fas fa-clock"></i> Recent Projects</h2>
+                <button class="btn-text" onclick="openAllProjectsPanel()">
+                    <i class="fas fa-th-large"></i> See All Projects
+                </button>
+            </div>
+            <div class="recent-projects-grid" id="recentProjectsGrid">
+                <!-- Recent projects will be inserted here -->
             </div>
         </section>
     </main>
+
+    <!-- All Projects Floating Panel -->
+    <div class="all-projects-panel" id="allProjectsPanel">
+        <div class="panel-overlay" onclick="closeAllProjectsPanel()"></div>
+        <div class="panel-content">
+            <div class="panel-header">
+                <h2><i class="fas fa-seedling"></i> All Projects</h2>
+                <button class="btn-close" onclick="closeAllProjectsPanel()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="panel-filters">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchProjects" placeholder="Search projects...">
+                </div>
+                <div class="filter-group">
+                    <button class="filter-btn active" data-status="all">
+                        All <span class="count" id="countAll">0</span>
+                    </button>
+                    <button class="filter-btn" data-status="planning">
+                        Planning <span class="count" id="countPlanning">0</span>
+                    </button>
+                    <button class="filter-btn" data-status="active">
+                        Active <span class="count" id="countActive">0</span>
+                    </button>
+                    <button class="filter-btn" data-status="completed">
+                        Completed <span class="count" id="countCompleted">0</span>
+                    </button>
+                    <button class="filter-btn" data-status="paused">
+                        Paused <span class="count" id="countPaused">0</span>
+                    </button>
+                </div>
+                <select id="sortProjects" class="sort-select">
+                    <option value="recent">Most Recent</option>
+                    <option value="name">Name (A-Z)</option>
+                    <option value="area">Area (Largest)</option>
+                    <option value="progress">Progress</option>
+                </select>
+            </div>
+            
+            <div class="panel-body">
+                <div id="projectsGrid" class="projects-grid">
+                    <div class="loading-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Loading projects...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer class="footer">
@@ -302,13 +266,12 @@
         </div>
     </footer>
 
-    <!-- Modals -->
-    <!-- Create/Edit Project Modal -->
+    <!-- Create Project Modal -->
     <div class="modal" id="projectModal">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modalTitle"><i class="fas fa-plus"></i> Create New Project</h2>
-                <button class="btn-close" id="closeProjectModalBtn">
+                <button class="btn-close" onclick="closeProjectModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -374,11 +337,52 @@
         <div class="modal-content modal-large">
             <div class="modal-header">
                 <h2 id="detailsProjectName"><i class="fas fa-info-circle"></i> Project Details</h2>
-                <button class="btn-close" id="closeDetailsModalBtn">
+                <button class="btn-close" onclick="closeDetailsModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="modal-body" id="projectDetailsContent"></div>
+            <div class="modal-body" id="projectDetailsContent">
+                <!-- Content loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Change Modal -->
+    <div class="modal" id="statusChangeModal">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2><i class="fas fa-exchange-alt"></i> Change Project Status</h2>
+                <button class="btn-close" onclick="closeStatusModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="status-change-info">Moving project: <strong id="statusProjectName"></strong></p>
+                <div class="status-flow">
+                    <div class="status-option" data-status="planning">
+                        <i class="fas fa-drafting-compass"></i>
+                        <span>Planning</span>
+                    </div>
+                    <div class="status-option" data-status="active">
+                        <i class="fas fa-play-circle"></i>
+                        <span>Active</span>
+                    </div>
+                    <div class="status-option" data-status="completed">
+                        <i class="fas fa-check-circle"></i>
+                        <span>Completed</span>
+                    </div>
+                    <div class="status-option" data-status="paused">
+                        <i class="fas fa-pause-circle"></i>
+                        <span>Paused</span>
+                    </div>
+                </div>
+                <div class="status-actions">
+                    <button class="btn btn-outline" onclick="closeStatusModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="confirmStatusChange()">
+                        <i class="fas fa-check"></i> Confirm Change
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
