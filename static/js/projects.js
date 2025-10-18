@@ -1,12 +1,15 @@
 // ========================================
-// REGENARDHI - MAP-CENTRIC REDESIGN JS
-// Clean, organized, and efficient
+// REGENARDHI - REDESIGNED PROJECTS JS
+// Modern, Clean, Animated
 // ========================================
 
 // Global State
 const state = {
     projects: [],
     filteredProjects: [],
+    selectedStatus: 'all',
+    searchTerm: '',
+    sortBy: 'recent',
     selectedProject: null,
     maps: {
         main: null,
@@ -16,7 +19,11 @@ const state = {
         main: [],
         modal: null
     },
-    editMode: false
+    editMode: false,
+    notifications: [],
+    unreadCount: 0,
+    statusChangeProject: null,
+    newStatus: null
 };
 
 // ========================
@@ -28,9 +35,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     initializeNavigation();
     initializeEventListeners();
-    initializeMainMap();
     loadProjects();
+    loadNotifications();
     checkGPSAvailability();
+    
+    // Refresh notifications every 30 seconds
+    setInterval(loadNotifications, 30000);
 });
 
 // ========================
@@ -42,6 +52,8 @@ function initializeNavigation() {
     const userDropdown = document.getElementById('userDropdown');
     const mobileToggle = document.getElementById('mobileToggle');
     const navLinks = document.getElementById('navLinks');
+    const notificationBtn = document.getElementById('notificationBtn');
+    const notificationPanel = document.getElementById('notificationPanel');
     
     if (userMenuBtn && userDropdown) {
         userMenuBtn.addEventListener('click', (e) => {
@@ -59,6 +71,19 @@ function initializeNavigation() {
             navLinks.classList.toggle('active');
         });
     }
+    
+    if (notificationBtn && notificationPanel) {
+        notificationBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            notificationPanel.classList.toggle('show');
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (!notificationPanel.contains(e.target) && e.target !== notificationBtn) {
+                notificationPanel.classList.remove('show');
+            }
+        });
+    }
 }
 
 // ========================
@@ -66,23 +91,33 @@ function initializeNavigation() {
 // ========================
 
 function initializeEventListeners() {
-    // Modal controls
-    document.getElementById('viewAllBtn')?.addEventListener('click', openAllProjectsModal);
-    document.getElementById('closeAllProjectsBtn')?.addEventListener('click', closeAllProjectsModal);
-    document.getElementById('newProjectBtn')?.addEventListener('click', openProjectModal);
-    document.getElementById('closeProjectModalBtn')?.addEventListener('click', closeProjectModal);
-    document.getElementById('closeDetailsModalBtn')?.addEventListener('click', closeDetailsModal);
-    document.getElementById('quickCreateBtn')?.addEventListener('click', handleQuickCreate);
+    // New project button
+    document.getElementById('quickCreateBtn')?.addEventListener('click', openProjectModal);
     
-    // Form
+    // Form submission
     document.getElementById('projectForm')?.addEventListener('submit', handleProjectSubmit);
     document.getElementById('latitude')?.addEventListener('change', updateModalMarker);
     document.getElementById('longitude')?.addEventListener('change', updateModalMarker);
     
-    // Filters
-    document.getElementById('searchProjects')?.addEventListener('input', filterProjects);
-    document.getElementById('filterStatus')?.addEventListener('change', filterProjects);
-    document.getElementById('filterType')?.addEventListener('change', filterProjects);
+    // Search and filters
+    document.getElementById('searchProjects')?.addEventListener('input', (e) => {
+        state.searchTerm = e.target.value;
+        filterAndRenderProjects();
+    });
+    
+    document.getElementById('sortProjects')?.addEventListener('change', (e) => {
+        state.sortBy = e.target.value;
+        filterAndRenderProjects();
+    });
+    
+    // Status filters
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.selectedStatus = btn.dataset.status;
+            updateStatusFilters();
+            filterAndRenderProjects();
+        });
+    });
     
     // Close modals on backdrop click
     document.querySelectorAll('.modal').forEach(modal => {
@@ -93,51 +128,6 @@ function initializeEventListeners() {
         });
     });
 }
-
-// ========================
-// GPS FUNCTIONALITY
-// ========================
-
-function checkGPSAvailability() {
-    if ("geolocation" in navigator) {
-        console.log('✓ GPS available');
-    } else {
-        console.log('✗ GPS not available');
-    }
-}
-
-window.useCurrentLocation = function() {
-    showNotification('📍 Getting your location...', 'info');
-    
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const lat = position.coords.latitude.toFixed(6);
-            const lng = position.coords.longitude.toFixed(6);
-            
-            document.getElementById('latitude').value = lat;
-            document.getElementById('longitude').value = lng;
-            
-            updateModalMarker();
-            showNotification('✓ Location detected successfully!', 'success');
-        },
-        (error) => {
-            let message = 'Could not get your location';
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    message = 'Location permission denied. Please enable GPS.';
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    message = 'Location information unavailable';
-                    break;
-                case error.TIMEOUT:
-                    message = 'Location request timed out';
-                    break;
-            }
-            showNotification(message, 'error');
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-};
 
 // ========================
 // DATA LOADING
@@ -152,49 +142,285 @@ async function loadProjects() {
         
         if (data.success) {
             state.projects = data.projects || [];
-            state.filteredProjects = [...state.projects];
             
-            renderLatestProjects();
             updateStatistics();
-            updateMainMap();
+            updateStatusCounts();
+            renderRecentProjects();
+            filterAndRenderProjects();
             
-            console.log(`✓ Loaded ${state.projects.length} projects`);
+            // Initialize map if it's expanded
+            if (!document.getElementById('mapSection').classList.contains('collapsed')) {
+                initializeMainMap();
+                updateMainMap();
+            }
+            
+            console.log(`✅ Loaded ${state.projects.length} projects`);
         } else {
-            showNotification(data.error || 'Failed to load projects', 'error');
-            showEmptyState('latestProjects');
+            showToast(data.error || 'Failed to load projects', 'error');
+            showEmptyState();
         }
     } catch (error) {
         console.error('Error loading projects:', error);
-        showNotification('Error connecting to server', 'error');
-        showEmptyState('latestProjects');
+        showToast('Error connecting to server', 'error');
+        showEmptyState();
     }
+}
+
+// ========================
+// NOTIFICATIONS
+// ========================
+
+async function loadNotifications() {
+    try {
+        const response = await fetch('/notifications/api/list');
+        const data = await response.json();
+        
+        if (data.success) {
+            state.notifications = data.notifications || [];
+            state.unreadCount = data.unread_count || 0;
+            
+            updateNotificationBadge();
+            renderNotifications();
+        }
+    } catch (error) {
+        console.error('Error loading notifications:', error);
+    }
+}
+
+function updateNotificationBadge() {
+    const badge = document.getElementById('notificationBadge');
+    if (badge) {
+        badge.textContent = state.unreadCount;
+        if (state.unreadCount > 0) {
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+}
+
+function renderNotifications() {
+    const container = document.getElementById('notificationList');
+    if (!container) return;
+    
+    if (state.notifications.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 2rem;">
+                <i class="fas fa-bell-slash"></i>
+                <p>No notifications yet</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = state.notifications.map(notif => `
+        <div class="notification-item ${!notif.is_read ? 'unread' : ''}" 
+             onclick="handleNotificationClick(${notif.id}, '${notif.link || ''}')">
+            <div class="notification-item-header">
+                <span class="notification-item-title">
+                    <i class="fas fa-${notif.icon || 'info-circle'}"></i>
+                    ${escapeHtml(notif.title)}
+                </span>
+                <span class="notification-item-time">${formatTimeAgo(notif.created_at)}</span>
+            </div>
+            <div class="notification-item-message">${escapeHtml(notif.message)}</div>
+        </div>
+    `).join('');
+}
+
+async function handleNotificationClick(notificationId, link) {
+    try {
+        await fetch('/notifications/api/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notification_id: notificationId })
+        });
+        
+        await loadNotifications();
+        
+        if (link) {
+            window.location.href = link;
+        }
+    } catch (error) {
+        console.error('Error marking notification as read:', error);
+    }
+}
+
+window.markAllRead = async function() {
+    try {
+        await fetch('/notifications/api/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        
+        await loadNotifications();
+        showToast('All notifications marked as read', 'success');
+    } catch (error) {
+        console.error('Error marking all as read:', error);
+        showToast('Failed to mark notifications as read', 'error');
+    }
+};
+
+window.closeNotificationPanel = function() {
+    document.getElementById('notificationPanel')?.classList.remove('show');
+};
+
+// ========================
+// GPS FUNCTIONALITY
+// ========================
+
+function checkGPSAvailability() {
+    if ("geolocation" in navigator) {
+        console.log('✓ GPS available');
+    } else {
+        console.log('✗ GPS not available');
+    }
+}
+
+window.useCurrentLocation = function() {
+    showToast('📍 Getting your location...', 'info');
+    
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude.toFixed(6);
+            const lng = position.coords.longitude.toFixed(6);
+            
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+            
+            updateModalMarker();
+            showToast('✅ Location detected successfully!', 'success');
+        },
+        (error) => {
+            let message = 'Could not get your location';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message = 'Location permission denied. Please enable GPS.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message = 'Location information unavailable';
+                    break;
+                case error.TIMEOUT:
+                    message = 'Location request timed out';
+                    break;
+            }
+            showToast(message, 'error');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+};
+
+// ========================
+// FILTERING & SORTING
+// ========================
+
+function filterAndRenderProjects() {
+    let filtered = state.projects;
+    
+    // Apply status filter
+    if (state.selectedStatus !== 'all') {
+        filtered = filtered.filter(p => p.status === state.selectedStatus);
+    }
+    
+    // Apply search
+    if (state.searchTerm) {
+        const term = state.searchTerm.toLowerCase();
+        filtered = filtered.filter(p => 
+            p.name.toLowerCase().includes(term) ||
+            (p.location && p.location.toLowerCase().includes(term)) ||
+            (p.description && p.description.toLowerCase().includes(term))
+        );
+    }
+    
+    // Apply sorting
+    filtered = sortProjects(filtered, state.sortBy);
+    
+    state.filteredProjects = filtered;
+    
+    // Only render in the all projects panel (if it's open)
+    if (document.getElementById('allProjectsPanel')?.classList.contains('show')) {
+        renderAllProjects();
+    }
+}
+
+function sortProjects(projects, sortBy) {
+    const sorted = [...projects];
+    
+    switch(sortBy) {
+        case 'recent':
+            sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            break;
+        case 'name':
+            sorted.sort((a, b) => a.name.localeCompare(b.name));
+            break;
+        case 'area':
+            sorted.sort((a, b) => parseFloat(b.area_hectares || 0) - parseFloat(a.area_hectares || 0));
+            break;
+        case 'progress':
+            sorted.sort((a, b) => parseInt(b.progress_percentage || 0) - parseInt(a.progress_percentage || 0));
+            break;
+    }
+    
+    return sorted;
+}
+
+function updateStatusFilters() {
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        if (btn.dataset.status === state.selectedStatus) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+function updateStatusCounts() {
+    const counts = {
+        all: state.projects.length,
+        active: state.projects.filter(p => p.status === 'active').length,
+        planning: state.projects.filter(p => p.status === 'planning').length,
+        completed: state.projects.filter(p => p.status === 'completed').length,
+        paused: state.projects.filter(p => p.status === 'paused').length
+    };
+    
+    Object.keys(counts).forEach(status => {
+        const elem = document.getElementById(`count${status.charAt(0).toUpperCase() + status.slice(1)}`);
+        if (elem) elem.textContent = counts[status];
+    });
 }
 
 // ========================
 // RENDER FUNCTIONS
 // ========================
 
-function renderLatestProjects() {
-    const container = document.getElementById('latestProjects');
-    if (!container) return;
+function renderProjects() {
+    // This function now only renders recent projects
+    // All projects are rendered in the floating panel
+    renderRecentProjects();
+}
+
+function renderRecentProjects() {
+    const section = document.getElementById('recentProjectsSection');
+    const container = document.getElementById('recentProjectsGrid');
     
-    const latestProjects = state.projects.slice(0, 4);
+    if (!section || !container) return;
     
-    if (latestProjects.length === 0) {
-        showEmptyState('latestProjects');
+    // Get 2-3 most recent projects
+    const recentProjects = [...state.projects]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 3);
+    
+    if (recentProjects.length === 0) {
+        section.style.display = 'none';
         return;
     }
     
-    container.innerHTML = latestProjects.map(project => createMiniCard(project)).join('');
-    
-    // Attach click listeners
-    container.querySelectorAll('.project-card-mini').forEach(card => {
-        const projectId = parseInt(card.dataset.projectId);
-        card.addEventListener('click', () => selectProject(projectId));
-    });
+    section.style.display = 'block';
+    container.innerHTML = recentProjects.map(project => createProjectCard(project)).join('');
 }
 
-function createMiniCard(project) {
+function createProjectCard(project) {
     const statusColors = {
         'planning': '#3b82f6',
         'active': '#10b981',
@@ -210,113 +436,64 @@ function createMiniCard(project) {
     };
     
     return `
-        <div class="project-card-mini ${state.selectedProject?.id === project.id ? 'selected' : ''}" 
-             data-project-id="${project.id}">
-            <div class="project-card-header-mini">
-                <div>
-                    <h4>${escapeHtml(project.name)}</h4>
-                    <span class="project-status-mini" style="background: ${statusColors[project.status]}">
+        <div class="project-card" onclick="viewProjectDetails(${project.id})">
+            <div class="project-card-header">
+                <div class="project-card-title">
+                    <h4>
+                        <span class="project-type-icon">${typeIcons[project.project_type] || '🌿'}</span>
+                        ${escapeHtml(project.name)}
+                    </h4>
+                    <span class="project-status-badge" 
+                          style="background: ${statusColors[project.status]}"
+                          onclick="openStatusModal(${project.id}, '${project.name}', '${project.status}'); event.stopPropagation();">
                         ${project.status}
                     </span>
                 </div>
-                <div class="project-type-badge">
-                    ${typeIcons[project.project_type] || '🌿'}
+                <div class="project-card-meta">
+                    <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(project.location || 'Unknown')}</span>
+                    <span><i class="fas fa-calendar"></i> ${formatDate(project.created_at)}</span>
                 </div>
             </div>
-            <div class="project-meta-mini">
-                <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(project.location || 'Unknown')}</span>
-                <span><i class="fas fa-ruler-combined"></i> ${parseFloat(project.area_hectares || 0).toFixed(1)} ha</span>
-                <span><i class="fas fa-calendar"></i> ${formatDate(project.created_at)}</span>
+            
+            <div class="project-card-body">
+                <div class="project-progress">
+                    <div class="progress-header">
+                        <span class="progress-label">Progress</span>
+                        <span class="progress-value">${parseInt(project.progress_percentage || 0)}%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${project.progress_percentage || 0}%"></div>
+                    </div>
+                </div>
+                
+                <div class="project-info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Area</span>
+                        <span class="info-value">${parseFloat(project.area_hectares || 0).toFixed(1)} ha</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">NDVI</span>
+                        <span class="info-value">${project.vegetation_index ? parseFloat(project.vegetation_index).toFixed(2) : 'N/A'}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Climate</span>
+                        <span class="info-value">${project.climate_zone || 'N/A'}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Soil pH</span>
+                        <span class="info-value">${project.soil_ph ? parseFloat(project.soil_ph).toFixed(1) : 'N/A'}</span>
+                    </div>
+                </div>
             </div>
-            <div class="project-actions-mini">
-                <button class="btn-mini" onclick="viewProjectDetails(${project.id}); event.stopPropagation();">
+            
+            <div class="project-card-footer">
+                <button class="btn-card" onclick="viewProjectDetails(${project.id}); event.stopPropagation();">
                     <i class="fas fa-eye"></i> View
                 </button>
-                <button class="btn-mini" onclick="editProject(${project.id}); event.stopPropagation();">
+                <button class="btn-card" onclick="editProject(${project.id}); event.stopPropagation();">
                     <i class="fas fa-edit"></i> Edit
                 </button>
-                <button class="btn-mini" onclick="deleteProject(${project.id}); event.stopPropagation();">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
-            </div>
-        </div>
-    `;
-}
-
-function renderAllProjects() {
-    const container = document.getElementById('allProjectsGrid');
-    if (!container) return;
-    
-    if (state.filteredProjects.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state" style="grid-column: 1 / -1;">
-                <i class="fas fa-search"></i>
-                <h3>No Projects Found</h3>
-                <p>Try adjusting your filters</p>
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = state.filteredProjects.map(project => createFullCard(project)).join('');
-}
-
-function createFullCard(project) {
-    const statusColors = {
-        'planning': '#3b82f6',
-        'active': '#10b981',
-        'completed': '#8b5cf6',
-        'paused': '#f59e0b'
-    };
-    
-    const typeIcons = {
-        'reforestation': '🌲',
-        'soil-conservation': '🏔️',
-        'watershed': '💧',
-        'agroforestry': '🌾'
-    };
-    
-    return `
-        <div class="project-card-full">
-            <div class="project-card-full-header">
-                <h3>
-                    <span class="project-type-icon">${typeIcons[project.project_type] || '🌿'}</span>
-                    ${escapeHtml(project.name)}
-                </h3>
-                <span class="project-status-badge" style="background: ${statusColors[project.status]}">
-                    ${project.status}
-                </span>
-            </div>
-            <div class="project-card-full-body">
-                <div class="project-info-row">
-                    <span><i class="fas fa-map-marker-alt"></i> Location</span>
-                    <strong>${escapeHtml(project.location || 'Unknown')}</strong>
-                </div>
-                <div class="project-info-row">
-                    <span><i class="fas fa-ruler-combined"></i> Area</span>
-                    <strong>${parseFloat(project.area_hectares || 0).toFixed(1)} hectares</strong>
-                </div>
-                <div class="project-info-row">
-                    <span><i class="fas fa-chart-line"></i> Progress</span>
-                    <strong>${parseInt(project.progress_percentage || 0)}%</strong>
-                </div>
-                <div class="project-info-row">
-                    <span><i class="fas fa-leaf"></i> NDVI</span>
-                    <strong>${project.vegetation_index ? parseFloat(project.vegetation_index).toFixed(2) : 'N/A'}</strong>
-                </div>
-                <div class="project-info-row">
-                    <span><i class="fas fa-calendar"></i> Created</span>
-                    <strong>${formatDate(project.created_at)}</strong>
-                </div>
-            </div>
-            <div class="project-card-full-footer">
-                <button class="btn-mini" onclick="viewProjectDetails(${project.id})">
-                    <i class="fas fa-eye"></i> View
-                </button>
-                <button class="btn-mini" onclick="editProject(${project.id})">
-                    <i class="fas fa-edit"></i> Edit
-                </button>
-                <button class="btn-mini" onclick="deleteProject(${project.id})">
+                <button class="btn-card" onclick="deleteProject(${project.id}); event.stopPropagation();">
                     <i class="fas fa-trash"></i> Delete
                 </button>
             </div>
@@ -328,6 +505,27 @@ function createFullCard(project) {
 // MAP FUNCTIONS
 // ========================
 
+window.toggleMap = function() {
+    const mapSection = document.getElementById('mapSection');
+    const toggleText = document.getElementById('mapToggleText');
+    
+    mapSection.classList.toggle('collapsed');
+    
+    if (mapSection.classList.contains('collapsed')) {
+        toggleText.textContent = 'Show Project Map';
+    } else {
+        toggleText.textContent = 'Hide Project Map';
+        
+        // Initialize map if not already done
+        if (!state.maps.main) {
+            setTimeout(() => {
+                initializeMainMap();
+                updateMainMap();
+            }, 300);
+        }
+    }
+};
+
 function initializeMainMap() {
     const container = document.getElementById('projectsMap');
     if (!container || typeof L === 'undefined') {
@@ -336,6 +534,10 @@ function initializeMainMap() {
     }
     
     try {
+        if (state.maps.main) {
+            state.maps.main.remove();
+        }
+        
         state.maps.main = L.map(container).setView([-1.2921, 36.8219], 7);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -343,7 +545,7 @@ function initializeMainMap() {
             maxZoom: 19
         }).addTo(state.maps.main);
         
-        console.log('✓ Main map initialized');
+        console.log('✅ Main map initialized');
     } catch (error) {
         console.error('Map initialization error:', error);
     }
@@ -378,8 +580,8 @@ function updateMainMap() {
             const marker = L.marker([project.latitude, project.longitude], { icon })
                 .bindPopup(`
                     <div style="min-width: 200px;">
-                        <strong style="font-size: 1.1em; color: #10b981;">${project.name}</strong><br>
-                        <span style="color: #6b7280;">📍 ${project.location || 'Unknown'}</span><br>
+                        <strong style="font-size: 1.1em; color: #10b981;">${escapeHtml(project.name)}</strong><br>
+                        <span style="color: #6b7280;">📍 ${escapeHtml(project.location || 'Unknown')}</span><br>
                         <span style="color: #6b7280;">📏 ${parseFloat(project.area_hectares || 0).toFixed(1)} hectares</span><br>
                         <span style="color: #6b7280;">📊 ${project.status}</span><br>
                         <button onclick="viewProjectDetails(${project.id})" 
@@ -424,7 +626,7 @@ function initializeModalMap() {
             updateModalMarker();
         });
         
-        console.log('✓ Modal map initialized');
+        console.log('✅ Modal map initialized');
     } catch (error) {
         console.error('Modal map error:', error);
     }
@@ -444,56 +646,14 @@ function updateModalMarker() {
     }
 }
 
-window.centerMap = function() {
-    if (state.maps.main && state.projects.length > 0) {
-        const bounds = state.projects
-            .filter(p => p.latitude && p.longitude)
-            .map(p => [p.latitude, p.longitude]);
-        
-        if (bounds.length > 0) {
-            state.maps.main.fitBounds(bounds, { padding: [50, 50] });
-        }
-    }
-};
-
-window.toggleFullscreen = function() {
-    const container = document.querySelector('.map-container');
-    if (!document.fullscreenElement) {
-        container.requestFullscreen?.();
-    } else {
-        document.exitFullscreen?.();
-    }
-};
-
 // ========================
 // PROJECT ACTIONS
 // ========================
 
-function selectProject(projectId) {
-    const project = state.projects.find(p => p.id === projectId);
-    if (project) {
-        state.selectedProject = project;
-        renderLatestProjects();
-        
-        // Center map on selected project
-        if (state.maps.main && project.latitude && project.longitude) {
-            state.maps.main.setView([project.latitude, project.longitude], 12);
-            
-            // Open popup for this project
-            state.markers.main.forEach(marker => {
-                const latlng = marker.getLatLng();
-                if (latlng.lat === project.latitude && latlng.lng === project.longitude) {
-                    marker.openPopup();
-                }
-            });
-        }
-    }
-}
-
 window.viewProjectDetails = async function(projectId) {
     const project = state.projects.find(p => p.id === projectId);
     if (!project) {
-        showNotification('Project not found', 'error');
+        showToast('Project not found', 'error');
         return;
     }
     
@@ -505,185 +665,80 @@ window.viewProjectDetails = async function(projectId) {
     
     title.innerHTML = `<i class="fas fa-info-circle"></i> ${escapeHtml(project.name)}`;
     
-    content.innerHTML = `
-        <div class="project-details-tabs">
-            <button class="tab-btn active" data-tab="overview">
-                <i class="fas fa-info-circle"></i> Overview
-            </button>
-            <button class="tab-btn" data-tab="monitoring">
-                <i class="fas fa-satellite-dish"></i> Monitoring
-            </button>
-            <button class="tab-btn" data-tab="insights">
-                <i class="fas fa-brain"></i> AI Insights
-            </button>
-        </div>
-        
-        <div class="tab-content active" data-tab="overview">
-            ${createOverviewTab(project)}
-        </div>
-        <div class="tab-content" data-tab="monitoring">
-            ${createMonitoringTab(project)}
-        </div>
-        <div class="tab-content" data-tab="insights">
-            ${createInsightsTab(project)}
-        </div>
-    `;
-    
-    // Setup tab switching
-    content.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tab = btn.dataset.tab;
-            
-            content.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            content.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            
-            btn.classList.add('active');
-            content.querySelector(`.tab-content[data-tab="${tab}"]`)?.classList.add('active');
-        });
-    });
+    content.innerHTML = createProjectDetailsContent(project);
     
     modal.classList.add('show');
 };
 
-function createOverviewTab(project) {
+function createProjectDetailsContent(project) {
     return `
-        <div class="details-grid">
-            <div class="details-card">
-                <h4><i class="fas fa-info-circle"></i> Basic Information</h4>
-                <div class="project-info-row">
-                    <span>Type</span>
-                    <strong>${project.project_type || 'N/A'}</strong>
-                </div>
-                <div class="project-info-row">
-                    <span>Status</span>
-                    <strong>${project.status || 'N/A'}</strong>
-                </div>
-                <div class="project-info-row">
-                    <span>Area</span>
-                    <strong>${parseFloat(project.area_hectares || 0).toFixed(1)} hectares</strong>
-                </div>
-                <div class="project-info-row">
-                    <span>Location</span>
-                    <strong>${escapeHtml(project.location || 'Unknown')}</strong>
-                </div>
-                <div class="project-info-row">
-                    <span>Created</span>
-                    <strong>${formatDate(project.created_at)}</strong>
-                </div>
-            </div>
-            
-            <div class="details-card">
-                <h4><i class="fas fa-globe-africa"></i> Environmental Data</h4>
-                <div class="project-info-row">
-                    <span>Climate Zone</span>
-                    <strong>${project.climate_zone || 'N/A'}</strong>
-                </div>
-                <div class="project-info-row">
-                    <span>Soil Type</span>
-                    <strong>${project.soil_type || 'N/A'}</strong>
-                </div>
-                <div class="project-info-row">
-                    <span>Temperature</span>
-                    <strong>${project.temperature || 'N/A'}°C</strong>
-                </div>
-                <div class="project-info-row">
-                    <span>Degradation Level</span>
-                    <strong>${project.land_degradation_level || 'N/A'}</strong>
-                </div>
-            </div>
-            
-            <div class="details-card" style="grid-column: 1 / -1;">
-                <h4><i class="fas fa-align-left"></i> Description</h4>
-                <p>${escapeHtml(project.description || 'No description provided')}</p>
-            </div>
-            
-            ${project.recommended_crops && project.recommended_crops.length > 0 ? `
-                <div class="details-card">
-                    <h4><i class="fas fa-seedling"></i> Recommended Crops</h4>
-                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                        ${project.recommended_crops.slice(0, 6).map(crop => 
-                            `<span style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: white; border-radius: 20px; font-size: 0.875rem;">${crop}</span>`
-                        ).join('')}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--gray-200);">
+                <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-info-circle" style="color: var(--primary);"></i>
+                    Basic Information
+                </h4>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--gray-600);">Type</span>
+                        <strong>${project.project_type || 'N/A'}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--gray-600);">Status</span>
+                        <strong>${project.status || 'N/A'}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--gray-600);">Area</span>
+                        <strong>${parseFloat(project.area_hectares || 0).toFixed(1)} ha</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--gray-600);">Location</span>
+                        <strong>${escapeHtml(project.location || 'Unknown')}</strong>
                     </div>
                 </div>
-            ` : ''}
+            </div>
             
-            ${project.recommended_trees && project.recommended_trees.length > 0 ? `
-                <div class="details-card">
-                    <h4><i class="fas fa-tree"></i> Recommended Trees</h4>
-                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                        ${project.recommended_trees.slice(0, 6).map(tree => 
-                            `<span style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #10b981, #059669); color: white; border-radius: 20px; font-size: 0.875rem;">${tree}</span>`
-                        ).join('')}
+            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--gray-200);">
+                <h4 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-leaf" style="color: var(--primary);"></i>
+                    Environmental Data
+                </h4>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--gray-600);">Climate</span>
+                        <strong>${project.climate_zone || 'N/A'}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--gray-600);">Soil Type</span>
+                        <strong>${project.soil_type || 'N/A'}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--gray-600);">NDVI</span>
+                        <strong>${project.vegetation_index ? parseFloat(project.vegetation_index).toFixed(2) : 'N/A'}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--gray-600);">Degradation</span>
+                        <strong>${project.land_degradation_level || 'N/A'}</strong>
                     </div>
                 </div>
-            ` : ''}
-        </div>
-    `;
-}
-
-function createMonitoringTab(project) {
-    return `
-        <div class="details-grid">
-            <div class="details-card">
-                <h4><i class="fas fa-leaf"></i> Vegetation Health</h4>
-                <div class="project-info-row">
-                    <span>NDVI Index</span>
-                    <strong>${project.vegetation_index ? parseFloat(project.vegetation_index).toFixed(2) : 'N/A'}</strong>
-                </div>
-                <div class="project-info-row">
-                    <span>Health Status</span>
-                    <strong>${getHealthStatus(project.vegetation_index)}</strong>
-                </div>
-            </div>
-            
-            <div class="details-card">
-                <h4><i class="fas fa-chart-line"></i> Progress</h4>
-                <div class="project-info-row">
-                    <span>Completion</span>
-                    <strong>${parseInt(project.progress_percentage || 0)}%</strong>
-                </div>
-                <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin-top: 1rem;">
-                    <div style="height: 100%; background: linear-gradient(90deg, #10b981, #059669); width: ${project.progress_percentage || 0}%; transition: width 0.5s;"></div>
-                </div>
-            </div>
-            
-            <div class="details-card" style="grid-column: 1 / -1;">
-                <h4><i class="fas fa-satellite"></i> Monitoring Data</h4>
-                <p style="color: #6b7280; margin-bottom: 1rem;">Real-time satellite monitoring and AI analysis</p>
-                <button class="btn btn-primary" onclick="updateMonitoring(${project.id})">
-                    <i class="fas fa-sync"></i> Update Monitoring Data
-                </button>
             </div>
         </div>
-    `;
-}
-
-function createInsightsTab(project) {
-    const techniques = Array.isArray(project.restoration_techniques) ? project.restoration_techniques : [];
-    
-    return `
-        <div class="details-grid">
-            <div class="details-card" style="grid-column: 1 / -1;">
-                <h4><i class="fas fa-brain"></i> AI Recommendations</h4>
-                <p style="color: #6b7280; margin-bottom: 1rem;">Personalized restoration strategies based on AI analysis</p>
-                ${techniques.length > 0 ? `
-                    <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.75rem;">
-                        ${techniques.slice(0, 5).map(tech => `
-                            <li style="padding: 0.75rem 1rem; background: #f9fafb; border-left: 3px solid #10b981; border-radius: 8px;">
-                                <i class="fas fa-check-circle" style="color: #10b981; margin-right: 0.5rem;"></i>
-                                ${tech}
-                            </li>
-                        `).join('')}
-                    </ul>
-                ` : '<p style="color: #9ca3af;">No AI recommendations available yet</p>'}
+        
+        ${project.description ? `
+            <div style="margin-top: 1.5rem; padding: 1.5rem; background: var(--gray-50); border-radius: var(--radius-lg); border: 1px solid var(--gray-200);">
+                <h4 style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-align-left" style="color: var(--primary);"></i>
+                    Description
+                </h4>
+                <p style="color: var(--gray-700); line-height: 1.6;">${escapeHtml(project.description)}</p>
             </div>
-            
-            <div class="details-card" style="grid-column: 1 / -1;">
-                <button class="btn btn-success btn-block" onclick="downloadReport(${project.id})">
-                    <i class="fas fa-download"></i> Download Full AI Analysis Report
-                </button>
-            </div>
+        ` : ''}
+        
+        <div style="margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: flex-end;">
+            <button class="btn btn-outline" onclick="closeDetailsModal()">Close</button>
+            <button class="btn btn-primary" onclick="editProject(${project.id}); closeDetailsModal();">
+                <i class="fas fa-edit"></i> Edit Project
+            </button>
         </div>
     `;
 }
@@ -691,7 +746,7 @@ function createInsightsTab(project) {
 window.editProject = function(projectId) {
     const project = state.projects.find(p => p.id === projectId);
     if (!project) {
-        showNotification('Project not found', 'error');
+        showToast('Project not found', 'error');
         return;
     }
     
@@ -728,57 +783,84 @@ window.deleteProject = async function(projectId) {
         const data = await response.json();
         
         if (data.success) {
-            showNotification('✓ Project deleted successfully', 'success');
+            showToast('✅ Project deleted successfully', 'success');
             await loadProjects();
         } else {
-            showNotification(data.error || 'Failed to delete project', 'error');
+            showToast(data.error || 'Failed to delete project', 'error');
         }
     } catch (error) {
         console.error('Delete error:', error);
-        showNotification('Error deleting project', 'error');
+        showToast('Error deleting project', 'error');
     }
 };
 
-window.updateMonitoring = async function(projectId) {
-    showNotification('🔄 Updating monitoring data...', 'info');
+// ========================
+// STATUS CHANGE
+// ========================
+
+window.openStatusModal = function(projectId, projectName, currentStatus) {
+    state.statusChangeProject = projectId;
+    state.newStatus = null;
+    
+    document.getElementById('statusProjectName').textContent = projectName;
+    
+    // Setup status options
+    const statusOptions = document.querySelectorAll('.status-option');
+    statusOptions.forEach(option => {
+        option.classList.remove('selected');
+        
+        if (option.dataset.status === currentStatus) {
+            option.classList.add('selected');
+            state.newStatus = currentStatus;
+        }
+        
+        option.onclick = function() {
+            statusOptions.forEach(opt => opt.classList.remove('selected'));
+            this.classList.add('selected');
+            state.newStatus = this.dataset.status;
+        };
+    });
+    
+    document.getElementById('statusChangeModal').classList.add('show');
+};
+
+window.closeStatusModal = function() {
+    document.getElementById('statusChangeModal').classList.remove('show');
+    state.statusChangeProject = null;
+    state.newStatus = null;
+};
+
+window.confirmStatusChange = async function() {
+    if (!state.statusChangeProject || !state.newStatus) {
+        showToast('Please select a status', 'warning');
+        return;
+    }
     
     try {
-        const response = await fetch(`/monitoring/api/project/${projectId}/update`, {
-            method: 'POST'
+        const response = await fetch(`/projects/${state.statusChangeProject}/update-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: state.newStatus })
         });
         
         const data = await response.json();
         
         if (data.success) {
-            showNotification('✓ Monitoring data updated!', 'success');
+            showToast('✅ Status updated successfully!', 'success');
+            closeStatusModal();
             await loadProjects();
-            closeDetailsModal();
         } else {
-            showNotification(data.error || 'Failed to update', 'error');
+            showToast(data.error || 'Failed to update status', 'error');
         }
     } catch (error) {
-        showNotification('Error updating monitoring data', 'error');
+        console.error('Status update error:', error);
+        showToast('Error updating status', 'error');
     }
-};
-
-window.downloadReport = function(projectId) {
-    showNotification('Downloading AI analysis report...', 'info');
-    window.location.href = `/projects/${projectId}/report`;
 };
 
 // ========================
 // MODAL FUNCTIONS
 // ========================
-
-function openAllProjectsModal() {
-    state.filteredProjects = [...state.projects];
-    renderAllProjects();
-    document.getElementById('allProjectsModal')?.classList.add('show');
-}
-
-function closeAllProjectsModal() {
-    document.getElementById('allProjectsModal')?.classList.remove('show');
-}
 
 function openProjectModal() {
     if (!state.editMode) {
@@ -795,27 +877,28 @@ function openProjectModal() {
     }, 100);
 }
 
-function closeProjectModal() {
+window.closeProjectModal = function() {
     document.getElementById('projectModal')?.classList.remove('show');
     state.editMode = false;
-}
+};
 
-function closeDetailsModal() {
+window.closeDetailsModal = function() {
     document.getElementById('projectDetailsModal')?.classList.remove('show');
-}
+};
 
 // ========================
 // FORM HANDLING
 // ========================
 
 async function handleQuickCreate() {
-    const btn = document.getElementById('quickCreateBtn');
+    const btn = event.target.closest('button');
     if (!btn) return;
     
+    const originalHTML = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
     
-    showNotification('🎯 Getting your location...', 'info');
+    showToast('🎯 Getting your location...', 'info');
     
     try {
         const position = await new Promise((resolve, reject) => {
@@ -828,7 +911,7 @@ async function handleQuickCreate() {
         
         const projectData = {
             name: `Quick Project - ${new Date().toLocaleString()}`,
-            description: 'Quick-created project using GPS',
+            description: 'Quick-created project using GPS location',
             project_type: 'reforestation',
             area_hectares: 10,
             latitude: position.coords.latitude,
@@ -844,19 +927,25 @@ async function handleQuickCreate() {
         const data = await response.json();
         
         if (data.success) {
-            showNotification('🎉 Project created successfully!', 'success');
+            showToast('🎉 Project created successfully!', 'success');
             await loadProjects();
         } else {
-            showNotification(data.error || 'Failed to create project', 'error');
+            showToast(data.error || 'Failed to create project', 'error');
         }
     } catch (error) {
         console.error('Quick create error:', error);
-        showNotification('Failed to create project. Please enable GPS.', 'error');
+        if (error.code === 1) {
+            showToast('Please enable location access to use Quick Create', 'warning');
+        } else {
+            showToast('Failed to create project. Please try manual creation.', 'error');
+        }
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-bolt"></i> Quick Create';
+        btn.innerHTML = originalHTML;
     }
 }
+
+window.handleQuickCreate = handleQuickCreate;
 
 async function handleProjectSubmit(e) {
     e.preventDefault();
@@ -873,7 +962,7 @@ async function handleProjectSubmit(e) {
     
     if (!formData.name || !formData.project_type || !formData.area_hectares || 
         !formData.latitude || !formData.longitude) {
-        showNotification('Please fill all required fields', 'warning');
+        showToast('Please fill all required fields', 'warning');
         return;
     }
     
@@ -885,10 +974,9 @@ async function handleProjectSubmit(e) {
     
     try {
         const url = projectId ? `/projects/${projectId}/update` : '/projects/create';
-        const method = 'POST';
         
         const response = await fetch(url, {
-            method,
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
         });
@@ -896,42 +984,21 @@ async function handleProjectSubmit(e) {
         const data = await response.json();
         
         if (data.success) {
-            showNotification(projectId ? '✓ Project updated!' : '🎉 Project created!', 'success');
+            showToast(projectId ? '✅ Project updated!' : '🎉 Project created!', 'success');
             closeProjectModal();
             await loadProjects();
         } else {
-            showNotification(data.error || 'Failed to save project', 'error');
+            showToast(data.error || 'Failed to save project', 'error');
         }
     } catch (error) {
         console.error('Form submit error:', error);
-        showNotification('Error saving project', 'error');
+        showToast('Error saving project', 'error');
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.innerHTML = `<i class="fas fa-check"></i> <span id="submitBtnText">${projectId ? 'Update' : 'Create'} Project</span>`;
         }
     }
-}
-
-// ========================
-// FILTER FUNCTIONS
-// ========================
-
-function filterProjects() {
-    const searchTerm = document.getElementById('searchProjects')?.value.toLowerCase() || '';
-    const statusFilter = document.getElementById('filterStatus')?.value || '';
-    const typeFilter = document.getElementById('filterType')?.value || '';
-    
-    state.filteredProjects = state.projects.filter(project => {
-        const matchesSearch = project.name.toLowerCase().includes(searchTerm) ||
-                            (project.location && project.location.toLowerCase().includes(searchTerm));
-        const matchesStatus = !statusFilter || project.status === statusFilter;
-        const matchesType = !typeFilter || project.project_type === typeFilter;
-        
-        return matchesSearch && matchesStatus && matchesType;
-    });
-    
-    renderAllProjects();
 }
 
 // ========================
@@ -943,22 +1010,94 @@ function updateStatistics() {
     const active = state.projects.filter(p => p.status === 'active').length;
     const totalArea = state.projects.reduce((sum, p) => sum + parseFloat(p.area_hectares || 0), 0);
     
-    // Count unique locations
-    const locations = new Set(state.projects.map(p => p.location).filter(Boolean));
-    const totalLocations = locations.size;
+    // Animate numbers
+    animateNumber('totalProjects', total);
+    animateNumber('totalArea', totalArea.toFixed(1));
+    animateNumber('activeProjects', active);
+}
+
+function animateNumber(elementId, targetValue) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
     
-    document.getElementById('totalProjects').textContent = total;
-    document.getElementById('activeProjects').textContent = active;
-    document.getElementById('totalArea').textContent = totalArea.toFixed(1);
-    document.getElementById('totalLocations').textContent = totalLocations;
+    const startValue = parseFloat(element.textContent) || 0;
+    const duration = 1000;
+    const startTime = performance.now();
+    
+    function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Easing function
+        const easeOutQuad = 1 - Math.pow(1 - progress, 3);
+        const currentValue = startValue + (targetValue - startValue) * easeOutQuad;
+        
+        element.textContent = typeof targetValue === 'string' && targetValue.includes('.') 
+            ? currentValue.toFixed(1)
+            : Math.round(currentValue);
+        
+        if (progress < 1) {
+            requestAnimationFrame(update);
+        }
+    }
+    
+    requestAnimationFrame(update);
 }
 
 // ========================
-// HELPER FUNCTIONS
+// UTILITY FUNCTIONS
 // ========================
 
-function showEmptyState(containerId) {
-    const container = document.getElementById(containerId);
+window.scrollToAllProjects = function() {
+    // This function is no longer needed - replaced with floating panel
+    openAllProjectsPanel();
+};
+
+window.openAllProjectsPanel = function() {
+    const panel = document.getElementById('allProjectsPanel');
+    if (!panel) return;
+    
+    panel.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    
+    // Render all projects in the panel
+    renderAllProjects();
+};
+
+window.closeAllProjectsPanel = function() {
+    const panel = document.getElementById('allProjectsPanel');
+    if (!panel) return;
+    
+    // Add closing animation
+    panel.classList.add('closing');
+    
+    setTimeout(() => {
+        panel.classList.remove('show', 'closing');
+        document.body.style.overflow = '';
+    }, 300);
+};
+
+function renderAllProjects() {
+    const container = document.querySelector('#allProjectsPanel .projects-grid');
+    if (!container) return;
+    
+    if (state.filteredProjects.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-search"></i>
+                <h3>No Projects Found</h3>
+                <p>${state.searchTerm ? 'Try adjusting your search' : 'Create your first project to get started'}</p>
+                ${!state.searchTerm ? '<button class="btn btn-primary" onclick="closeAllProjectsPanel(); openProjectModal()"><i class="fas fa-plus"></i> Create Project</button>' : ''}
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = state.filteredProjects.map(project => createProjectCard(project)).join('');
+}
+
+function showEmptyState() {
+    const container = document.getElementById('projectsGrid');
     if (!container) return;
     
     container.innerHTML = `
@@ -973,14 +1112,6 @@ function showEmptyState(containerId) {
     `;
 }
 
-function getHealthStatus(ndvi) {
-    if (!ndvi) return 'Unknown';
-    if (ndvi >= 0.6) return 'Excellent';
-    if (ndvi >= 0.4) return 'Good';
-    if (ndvi >= 0.2) return 'Fair';
-    return 'Poor';
-}
-
 function formatDate(dateString) {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
@@ -989,6 +1120,21 @@ function formatDate(dateString) {
         month: 'short', 
         day: 'numeric' 
     });
+}
+
+function formatTimeAgo(dateString) {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    
+    return formatDate(dateString);
 }
 
 function escapeHtml(text) {
@@ -1003,9 +1149,9 @@ function escapeHtml(text) {
     return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
     
     const icons = {
         'success': 'check-circle',
@@ -1014,25 +1160,253 @@ function showNotification(message, type = 'info') {
         'info': 'info-circle'
     };
     
-    notification.innerHTML = `
+    toast.innerHTML = `
         <i class="fas fa-${icons[type] || 'info-circle'}"></i>
         <span>${message}</span>
     `;
     
-    let container = document.getElementById('notificationContainer');
+    let container = document.getElementById('toastContainer');
     if (!container) {
         container = document.createElement('div');
-        container.id = 'notificationContainer';
+        container.id = 'toastContainer';
         document.body.appendChild(container);
     }
     
-    container.appendChild(notification);
-    setTimeout(() => notification.classList.add('show'), 10);
+    container.appendChild(toast);
+    setTimeout(() => toast.classList.add('show'), 10);
     
     setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => notification.remove(), 300);
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
     }, 4000);
 }
 
-console.log('✓ RegenArdhi Projects loaded!');
+// ========================
+// ADDITIONAL CSS STYLES
+// ========================
+
+// Add notification item styles
+const notificationStyles = document.createElement('style');
+notificationStyles.textContent = `
+    .notification-item {
+        padding: 1rem;
+        border-bottom: 1px solid var(--gray-200);
+        cursor: pointer;
+        transition: var(--transition);
+        background: var(--white);
+    }
+    
+    .notification-item:hover {
+        background: var(--gray-50);
+    }
+    
+    .notification-item.unread {
+        background: linear-gradient(90deg, #eff6ff, var(--white));
+        border-left: 3px solid var(--primary);
+    }
+    
+    .notification-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.5rem;
+    }
+    
+    .notification-item-title {
+        font-weight: 600;
+        color: var(--gray-900);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex: 1;
+    }
+    
+    .notification-item-title i {
+        color: var(--primary);
+    }
+    
+    .notification-item-time {
+        font-size: 0.75rem;
+        color: var(--gray-500);
+        white-space: nowrap;
+    }
+    
+    .notification-item-message {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+        line-height: 1.5;
+    }
+    
+    .project-details-tabs {
+        display: flex;
+        gap: 0.5rem;
+        border-bottom: 2px solid var(--gray-200);
+        margin-bottom: 2rem;
+    }
+    
+    .tab-btn {
+        padding: 1rem 1.5rem;
+        background: transparent;
+        border: none;
+        border-bottom: 3px solid transparent;
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--gray-600);
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .tab-btn:hover {
+        color: var(--primary);
+    }
+    
+    .tab-btn.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+        animation: fadeInUp 0.3s ease;
+    }
+    
+    /* Custom Leaflet marker styles */
+    .custom-marker {
+        background: transparent;
+        border: none;
+    }
+    
+    /* Smooth scroll */
+    html {
+        scroll-behavior: smooth;
+    }
+    
+    /* Progress bar animation */
+    .progress-fill {
+        animation: progressGrow 1.5s ease-in-out;
+    }
+    
+    @keyframes progressGrow {
+        from {
+            width: 0 !important;
+        }
+    }
+    
+    /* Card hover effects */
+    .project-card {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .project-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--primary), var(--primary-light));
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+    }
+    
+    .project-card:hover::before {
+        transform: translateX(0);
+    }
+    
+    /* Status badge pulse animation for active projects */
+    .project-status-badge[style*="background: #10b981"] {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+        }
+        50% {
+            box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+        }
+    }
+    
+    /* Enhanced card animations */
+    .project-card:nth-child(1) { animation-delay: 0.05s; }
+    .project-card:nth-child(2) { animation-delay: 0.1s; }
+    .project-card:nth-child(3) { animation-delay: 0.15s; }
+    .project-card:nth-child(4) { animation-delay: 0.2s; }
+    .project-card:nth-child(5) { animation-delay: 0.25s; }
+    .project-card:nth-child(6) { animation-delay: 0.3s; }
+    
+    /* Button ripple effect */
+    .btn, .btn-card, .filter-btn {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .btn::after, .btn-card::after, .filter-btn::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.5);
+        transform: translate(-50%, -50%);
+        transition: width 0.6s, height 0.6s;
+    }
+    
+    .btn:active::after, .btn-card:active::after, .filter-btn:active::after {
+        width: 300px;
+        height: 300px;
+    }
+    
+    /* Skeleton loading for cards */
+    @keyframes shimmer {
+        0% {
+            background-position: -1000px 0;
+        }
+        100% {
+            background-position: 1000px 0;
+        }
+    }
+    
+    .skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 1000px 100%;
+        animation: shimmer 2s infinite;
+    }
+    
+    /* Focus visible for accessibility */
+    *:focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+    }
+    
+    /* Smooth transitions for all interactive elements */
+    button, a, input, select, textarea {
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+`;
+document.head.appendChild(notificationStyles);
+
+console.log('✅ RegenArdhi Projects loaded!');
+
+// ========================
+// EXPORT FOR TESTING
+// ========================
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        state,
+        loadProjects,
+        filterAndRenderProjects,
+        updateStatistics,
+        showToast
+    };
+}
