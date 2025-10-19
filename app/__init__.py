@@ -46,6 +46,7 @@ app.config.update(
     MYSQL_DB=os.getenv("MYSQL_DB", "regenardhi_db"),
     MYSQL_PORT=int(os.getenv("MYSQL_PORT", 3306)),
     MYSQL_CURSORCLASS='DictCursor'
+
 )
 
 # -------------------------------
@@ -54,6 +55,15 @@ app.config.update(
 mail = Mail(app)
 mysql = MySQL(app)
 
+try:
+    from app.notifications import notifications_bp, init_notifications
+    init_notifications(app, mysql)
+    app.register_blueprint(notifications_bp)
+    print("✅ Notifications module loaded successfully!")
+except Exception as e:
+    print(f"❌ Failed to load Notifications module: {e}")
+    import traceback
+    traceback.print_exc()
 # -------------------------------
 #  Initialize Database Tables
 # -------------------------------
