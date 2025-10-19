@@ -1,54 +1,76 @@
+"""
+RegenArdhi - AI-Powered Land Restoration Platform
+Main Application Entry Point
+"""
+
 import os
-from flask import Flask
+from flask import Flask, jsonify
 from flask_mail import Mail
 from flask_mysqldb import MySQL
 from dotenv import load_dotenv
 from datetime import timedelta
 
-# Load environment variables FIRST
 load_dotenv()
 
-# Create Flask app
+# ===============================
+#  CREATE FLASK APP
+# ===============================
 app = Flask(__name__)
 
-# -------------------------
-# 🔧 Configurations
-# -------------------------
+# ===============================
+#  BASIC CONFIGURATION
+# ===============================
 app.secret_key = os.getenv("SECRET_KEY", "dev-key-please-change-this-in-production")
 
-# Session configuration
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-app.config['SESSION_COOKIE_SECURE'] = False
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7),
+    SESSION_COOKIE_SECURE=False,  # Set to True in production with HTTPS
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+)
 
-# Email (Flask-Mail)
-app.config["MAIL_SERVER"] = os.getenv("MAIL_SERVER", "smtp.gmail.com")
-app.config["MAIL_PORT"] = int(os.getenv("MAIL_PORT", 587))
-app.config["MAIL_USE_TLS"] = True
-app.config["MAIL_USERNAME"] = os.getenv("MAIL_USERNAME")
-app.config["MAIL_PASSWORD"] = os.getenv("MAIL_PASSWORD")
-app.config["MAIL_DEFAULT_SENDER"] = os.getenv("MAIL_SENDER_EMAIL")
+# ===============================
+#  DATABASE CONFIGURATION
+# ===============================
+app.config.update(
+    MYSQL_HOST=os.getenv("MYSQL_HOST", "localhost"),
+    MYSQL_USER=os.getenv("MYSQL_USER", "root"),
+    MYSQL_PASSWORD=os.getenv("MYSQL_PASSWORD", ""),
+    MYSQL_DB=os.getenv("MYSQL_DB", "regenardhi_db"),
+    MYSQL_PORT=int(os.getenv("MYSQL_PORT", 3306)),
+    MYSQL_CURSORCLASS='DictCursor'
+)
 
-# MySQL Configuration
-# MySQL Configuration
-app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST', 'localhost')
-app.config['MYSQL_USER'] = os.getenv('MYSQL_USER', 'root')
-app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD', '')
-app.config['MYSQL_DB'] = os.getenv('MYSQL_DB', 'regenardhi_db')
-app.config['MYSQL_PORT'] = int(os.getenv('MYSQL_PORT', 3306))  # ADD THIS LINE
-app.config['MYSQL_CURSORCLASS'] = 'DictCursor'
+# ===============================
+#  EMAIL CONFIGURATION
+# ===============================
+app.config.update(
+    MAIL_SERVER=os.getenv("MAIL_SERVER", "smtp.gmail.com"),
+    MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
+    MAIL_USE_TLS=True,
+    MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
+    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
+    MAIL_DEFAULT_SENDER=os.getenv("MAIL_SENDER_EMAIL"),
+)
 
-# Initialize extensions
+# ===============================
+#  INITIALIZE EXTENSIONS
+# ===============================
 mail = Mail(app)
 mysql = MySQL(app)
 
-# Initialize database tables
+print("\n" + "="*80)
+print("🌿 REGENARDHI - INITIALIZING")
+print("="*80)
+
+# ===============================
+#  INITIALIZE DATABASE TABLES
+# ===============================
 with app.app_context():
     try:
         cur = mysql.connection.cursor()
-        
-        # Create users table with password reset fields
+
+        # Users table
         cur.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -66,183 +88,198 @@ with app.app_context():
                 INDEX idx_reset_token (reset_token)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ''')
-        
+
         mysql.connection.commit()
         cur.close()
-        print("✅ Users table initialized successfully!")
-        
+        print("✅ Users table initialized")
+
     except Exception as e:
         print(f"❌ Error initializing users table: {e}")
 
-# -------------------------
-# 📦 Register Blueprints
-# -------------------------
-print("\n" + "="*80)
-print("🔧 LOADING MODULES")
-print("="*80)
+# ===============================
+#  REGISTER BLUEPRINTS
+# ===============================
 
-# Initialize Projects module
+# 1. NOTIFICATIONS MODULE (First - others depend on it)
+try:
+    from app.notifications import notifications_bp, init_notifications
+    init_notifications(app, mysql)
+    app.register_blueprint(notifications_bp)
+    print("✅ Notifications module loaded")
+except Exception as e:
+    print(f"❌ Failed to load Notifications: {e}")
+    import traceback
+    traceback.print_exc()
+
+# 2. PROJECTS MODULE
 try:
     from app.projects import projects_bp, init_projects
     init_projects(app, mysql)
     app.register_blueprint(projects_bp)
-    print(f"✅ Projects module loaded at: {projects_bp.url_prefix}")
+    print("✅ Projects module loaded")
 except Exception as e:
-    print(f"❌ Failed to load Projects module: {e}")
+    print(f"❌ Failed to load Projects: {e}")
     import traceback
     traceback.print_exc()
 
-# Initialize Monitoring module
+# 3. MONITORING MODULE
 try:
     from app.monitoring import monitoring_bp, init_monitoring
     init_monitoring(app, mysql)
     app.register_blueprint(monitoring_bp)
-    print(f"✅ Monitoring module loaded at: {monitoring_bp.url_prefix}")
+    print("✅ Monitoring module loaded")
 except Exception as e:
-    print(f"❌ Failed to load Monitoring module: {e}")
+    print(f"❌ Failed to load Monitoring: {e}")
     import traceback
     traceback.print_exc()
 
-# Initialize Insights module - WITH EXPLICIT ERROR HANDLING
+# 4. INSIGHTS MODULE
 try:
-    print("\n🔍 Loading Insights module...")
     from app.insights import insights_bp, init_insights
-    print(f"  → Blueprint imported: {insights_bp}")
-    print(f"  → URL prefix: {insights_bp.url_prefix}")
-    
-    # Initialize first
     init_insights(app, mysql)
-    print("  → Database initialized")
-    
-    # Then register
     app.register_blueprint(insights_bp)
-    print(f"✅ Insights module loaded successfully at: {insights_bp.url_prefix}")
-    
-    # Verify routes were registered
-    insights_routes = [str(rule) for rule in app.url_map.iter_rules() if 'insights' in str(rule)]
-    print(f"  → Registered routes: {insights_routes}")
-    
-except ImportError as e:
-    print(f"❌ Failed to import Insights module: {e}")
-    print("   → Check if app/insights.py exists")
-    import traceback
-    traceback.print_exc()
+    print("✅ Insights module loaded")
 except Exception as e:
-    print(f"❌ Failed to load Insights module: {e}")
+    print(f"❌ Failed to load Insights: {e}")
     import traceback
     traceback.print_exc()
 
-# Initialize Chat module
+# 5. CHAT MODULE
 try:
     from app.chat import chat_bp, init_chat
     init_chat(app, mysql)
     app.register_blueprint(chat_bp)
-    print(f"✅ Chat module loaded at: {chat_bp.url_prefix}")
+    print("✅ Chat module loaded")
 except Exception as e:
-    print(f"❌ Failed to load Chat module: {e}")
+    print(f"❌ Failed to load Chat: {e}")
     import traceback
     traceback.print_exc()
 
-# Import and register main routes (LAST - to avoid conflicts)
+# 6. DASHBOARD MODULE
+try:
+    from app.dashboard import dashboard_bp, init_dashboard
+    init_dashboard(app, mysql)
+    app.register_blueprint(dashboard_bp)
+    print("✅ Dashboard module loaded")
+except Exception as e:
+    print(f"❌ Failed to load Dashboard: {e}")
+    import traceback
+    traceback.print_exc()
+
+# 7. MAIN ROUTES (Authentication, etc.)
 try:
     from app.routes import main
     app.register_blueprint(main)
-    print(f"✅ Main routes loaded")
+    print("✅ Main routes loaded")
 except Exception as e:
-    print(f"❌ Error loading routes: {e}")
+    print(f"❌ Failed to load Main routes: {e}")
     import traceback
     traceback.print_exc()
 
+print("="*80)
+print("✅ REGENARDHI INITIALIZED SUCCESSFULLY")
 print("="*80 + "\n")
 
-# -------------------------
-# 🔍 DEBUG: Print all routes
-# -------------------------
-def print_all_routes():
+# ===============================
+#  DEBUG ROUTES
+# ===============================
+
+@app.route('/debug/routes')
+def debug_routes():
+    """Show all registered routes"""
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            'endpoint': rule.endpoint,
+            'methods': list(rule.methods),
+            'path': str(rule)
+        })
+    
+    # Filter notification routes
+    notification_routes = [r for r in routes if 'notification' in r['path'].lower()]
+    
+    return jsonify({
+        'success': True,
+        'total_routes': len(routes),
+        'notification_routes': notification_routes,
+        'all_routes': sorted(routes, key=lambda x: x['path'])
+    })
+
+@app.route('/debug/blueprints')
+def debug_blueprints():
+    """Show all registered blueprints"""
+    blueprints = {}
+    for name, blueprint in app.blueprints.items():
+        blueprints[name] = {
+            'name': blueprint.name,
+            'url_prefix': blueprint.url_prefix,
+            'static_folder': blueprint.static_folder,
+            'template_folder': blueprint.template_folder
+        }
+    
+    return jsonify({
+        'success': True,
+        'blueprints': blueprints,
+        'count': len(blueprints)
+    })
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'app': 'RegenArdhi',
+        'version': '1.0.0',
+        'modules': {
+            'notifications': 'notifications' in app.blueprints,
+            'projects': 'projects' in app.blueprints,
+            'monitoring': 'monitoring' in app.blueprints,
+            'insights': 'insights' in app.blueprints,
+            'chat': 'chat' in app.blueprints,
+            'dashboard': 'dashboard' in app.blueprints,
+            'main': 'main' in app.blueprints
+        }
+    })
+
+# ===============================
+#  ERROR HANDLERS
+# ===============================
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        'error': 'Not Found',
+        'message': 'The requested resource was not found',
+        'status': 404
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({
+        'error': 'Internal Server Error',
+        'message': 'An unexpected error occurred',
+        'status': 500
+    }), 500
+
+# ===============================
+#  RUN APPLICATION
+# ===============================
+
+if __name__ == '__main__':
     print("\n" + "="*80)
-    print("🗺️  ALL REGISTERED ROUTES")
+    print("🚀 STARTING REGENARDHI SERVER")
     print("="*80)
-    
-    insights_found = False
-    
-    for rule in sorted(app.url_map.iter_rules(), key=lambda r: str(r)):
-        methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
-        route_str = f"{str(rule):50s} [{methods:15s}] -> {rule.endpoint}"
-        
-        if 'insights' in str(rule).lower():
-            print(f"✅ {route_str}")
-            insights_found = True
-        else:
-            print(f"   {route_str}")
-    
-    print("="*80)
-    
-    if not insights_found:
-        print("\n⚠️  WARNING: No insights routes found!")
-        print("   This means insights_bp was NOT registered correctly.")
-        print("\n   Troubleshooting steps:")
-        print("   1. Check if app/insights.py exists")
-        print("   2. Check if insights_bp = Blueprint('insights', __name__, url_prefix='/insights')")
-        print("   3. Check if app.register_blueprint(insights_bp) was called")
-        print("   4. Check for any import errors in insights.py")
-    else:
-        print("\n✅ Insights routes are registered correctly!")
-    
+    print("📍 Local:   http://127.0.0.1:5000")
+    print("📍 Network: http://localhost:5000")
+    print("\n💡 Debug Routes:")
+    print("   - http://localhost:5000/health")
+    print("   - http://localhost:5000/debug/routes")
+    print("   - http://localhost:5000/debug/blueprints")
     print("="*80 + "\n")
-
-print_all_routes()
-
-# -------------------------
-# 🧪 Test API Keys (Optional)
-# -------------------------
-print("🧪 Testing API Integrations...")
-try:
-    from app.api_integrations import OpenWeatherAPI, NASAPowerAPI
-    from datetime import datetime, timedelta
     
-    # Test OpenWeather
-    print("  → Testing OpenWeather API...")
-    weather = OpenWeatherAPI.get_current_weather(-1.2921, 36.8219)
-    if weather:
-        print("  ✅ OpenWeather API working")
-    else:
-        print("  ⚠️  OpenWeather API failed")
-    
-    # Test NASA POWER
-    print("  → Testing NASA POWER API...")
-    climate = NASAPowerAPI.get_climate_data(
-        -1.2921, 36.8219,
-        datetime.now() - timedelta(days=7),
-        datetime.now()
+    app.run(
+        debug=True,
+        host='0.0.0.0',
+        port=5000,
+        use_reloader=True
     )
-    if climate:
-        print("  ✅ NASA POWER API working")
-    else:
-        print("  ⚠️  NASA POWER API failed")
-        
-except Exception as e:
-    print(f"  ⚠️  API test failed: {e}")
-
-print("\n" + "="*80)
-
-# -------------------------
-# 🚀 Run Server
-# -------------------------
-if __name__ == "__main__":
-    print("\n" + "="*80)
-    print("🌿 REGENARDHI SERVER")
-    print("="*80)
-    print(f"Environment: {'Development' if app.debug else 'Production'}")
-    print(f"Secret Key: {'✅ Set' if app.secret_key else '❌ NOT SET'}")
-    print(f"MySQL Host: {app.config.get('MYSQL_HOST')}")
-    print(f"MySQL User: {app.config.get('MYSQL_USER')}")
-    print(f"MySQL DB: {app.config.get('MYSQL_DB')}")
-    print(f"Mail Server: {app.config.get('MAIL_SERVER')}")
-    print("="*80)
-    print("\n🔗 Server URLs:")
-    print(f"  → Main: http://127.0.0.1:5000")
-    print(f"  → Insights: http://127.0.0.1:5000/insights/")
-    print(f"  → Insights Test: http://127.0.0.1:5000/insights/test")
-    print("\n" + "="*80 + "\n")
-    
-    app.run(debug=True, host='127.0.0.1', port=5000)
