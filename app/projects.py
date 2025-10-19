@@ -7,10 +7,15 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import time
 
+
+from app.notifications import create_notification
+
+
 load_dotenv()
 
 # Create Blueprint
 projects_bp = Blueprint('projects', __name__, url_prefix='/projects')
+# Create Blueprint
 
 # MySQL connection (passed from main app)
 mysql = None
@@ -826,6 +831,15 @@ def create_project():
         
         print(f"✅ Project created successfully! ID: {project_id}")
         
+        # 🆕 CREATE NOTIFICATION
+        create_notification(
+            user_id=user_id,
+            notification_type='project_created',
+            message=f'🌿 "{data.get("name")}" has been successfully created with AI analysis!',
+            project_id=project_id,
+            project_name=data.get('name')
+        )
+        
         return jsonify({
             'success': True,
             'project_id': project_id,
@@ -980,6 +994,15 @@ def update_project(project_id):
                 project_id,
                 user_id
             ))
+            
+            # 🆕 CREATE NOTIFICATION for re-analysis
+            create_notification(
+                user_id=user_id,
+                notification_type='analysis_complete',
+                message=f'🧠 AI analysis completed for "{name}"',
+                project_id=project_id,
+                project_name=name
+            )
         else:
             # Just update basic info
             cur.execute('''
@@ -995,6 +1018,15 @@ def update_project(project_id):
         cur.close()
         
         print(f"✅ Project {project_id} updated successfully!")
+        
+        # 🆕 CREATE NOTIFICATION for update
+        create_notification(
+            user_id=user_id,
+            notification_type='project_updated',
+            message=f'"{name}" has been updated',
+            project_id=project_id,
+            project_name=name
+        )
         
         return jsonify({
             'success': True,
@@ -1018,16 +1050,19 @@ def delete_project(project_id):
     try:
         user_id = session.get('user_id')
         
-        cur = mysql.connection.cursor()
+        # 🆕 Get project name before deleting (for notification)
+        from MySQLdb.cursors import DictCursor
+        cur = mysql.connection.cursor(DictCursor)
         
-        # Check if project exists and belongs to user
-        cur.execute('SELECT id FROM projects WHERE id = %s AND user_id = %s', 
+        cur.execute('SELECT name FROM projects WHERE id = %s AND user_id = %s', 
                    (project_id, user_id))
         project = cur.fetchone()
         
         if not project:
             cur.close()
             return jsonify({'success': False, 'error': 'Project not found'}), 404
+        
+        project_name = project['name']
         
         # Delete the project (CASCADE will handle related records)
         cur.execute('DELETE FROM projects WHERE id = %s AND user_id = %s', 
@@ -1037,6 +1072,15 @@ def delete_project(project_id):
         cur.close()
         
         print(f"✅ Project {project_id} deleted successfully!")
+        
+        # 🆕 CREATE NOTIFICATION for deletion
+        create_notification(
+            user_id=user_id,
+            notification_type='project_deleted',
+            message=f'"{project_name}" has been deleted',
+            project_id=None,  # No project link since it's deleted
+            project_name=project_name
+        )
         
         return jsonify({
             'success': True,
@@ -1050,43 +1094,172 @@ def delete_project(project_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ========================================
+# UPDATE: update_project_status() function
+# ========================================
+
 @projects_bp.route('/<int:project_id>/update-status', methods=['POST'])
 def update_project_status(project_id):
-    """Update project status"""
+    """Update project status and progress"""
     if 'user_id' not in session:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     
     try:
         data = request.get_json()
         status = data.get('status')
+        progress_percentage = data.get('progress_percentage')
         user_id = session.get('user_id')
+        
+        print(f"📥 Update request - Project: {project_id}, Status: {status}, Progress: {progress_percentage}")
         
         valid_statuses = ['planning', 'active', 'completed', 'paused']
         if status not in valid_statuses:
             return jsonify({'success': False, 'error': 'Invalid status'}), 400
         
-        cur = mysql.connection.cursor()
+        # Prepare update query
+        update_fields = ['status = %s', 'updated_at = %s']
+        update_values = [status, datetime.now()]
         
-        cur.execute('''
-            UPDATE projects 
-            SET status = %s, updated_at = %s
-            WHERE id = %s AND user_id = %s
-        ''', (status, datetime.now(), project_id, user_id))
+        # Handle progress_percentage if provided
+        if progress_percentage is not None:
+            progress_percentage = int(progress_percentage)
+            
+            if progress_percentage < 0 or progress_percentage > 100:
+                return jsonify({'success': False, 'error': 'Progress must be between 0 and 100'}), 400
+            
+            update_fields.append('progress_percentage = %s')
+            update_values.append(progress_percentage)
+            
+            print(f"✅ Setting progress to {progress_percentage}%")
+        else:
+            # Auto-set progress based on status if not provided
+            if status == 'planning':
+                update_fields.append('progress_percentage = %s')
+                update_values.append(0)
+                progress_percentage = 0
+            elif status == 'completed':
+                update_fields.append('progress_percentage = %s')
+                update_values.append(100)
+                progress_percentage = 100
         
-        if cur.rowcount == 0:
+        # Get current project info
+        from MySQLdb.cursors import DictCursor
+        cur = mysql.connection.cursor(DictCursor)
+        
+        cur.execute('SELECT name, status, start_date, progress_percentage FROM projects WHERE id = %s AND user_id = %s', 
+                   (project_id, user_id))
+        current_project = cur.fetchone()
+        
+        if not current_project:
             cur.close()
             return jsonify({'success': False, 'error': 'Project not found'}), 404
         
+        project_name = current_project['name']
+        old_status = current_project['status']
+        old_progress = current_project['progress_percentage'] or 0
+        
+        # Set start_date if moving from planning to active
+        if current_project['status'] == 'planning' and status == 'active':
+            if not current_project['start_date']:
+                update_fields.append('start_date = %s')
+                update_values.append(datetime.now().date())
+                print(f"📅 Setting start_date to today")
+        
+        # Set end_date if moving to completed
+        if status == 'completed':
+            update_fields.append('end_date = %s')
+            update_values.append(datetime.now().date())
+            print(f"🏁 Setting end_date to today")
+        
+        # Build and execute update query
+        update_query = f'''
+            UPDATE projects 
+            SET {', '.join(update_fields)}
+            WHERE id = %s AND user_id = %s
+        '''
+        update_values.extend([project_id, user_id])
+        
+        print(f"🔄 Executing query with values: {update_values}")
+        
+        cur.execute(update_query, tuple(update_values))
+        
+        if cur.rowcount == 0:
+            cur.close()
+            return jsonify({'success': False, 'error': 'Project not found or no changes made'}), 404
+        
         mysql.connection.commit()
+        
+        # Fetch updated project data to return
+        cur.execute('''
+            SELECT status, progress_percentage, start_date, end_date, updated_at
+            FROM projects 
+            WHERE id = %s AND user_id = %s
+        ''', (project_id, user_id))
+        
+        updated_project = cur.fetchone()
         cur.close()
         
+        print(f"✅ Status updated successfully! New progress: {updated_project['progress_percentage']}%")
+        
+        # 🆕 CREATE NOTIFICATION for status change
+        if status != old_status:
+            notification_type = 'project_completed' if status == 'completed' else 'status_changed'
+            
+            status_messages = {
+                'planning': 'is now in planning phase',
+                'active': 'is now active',
+                'completed': 'has been completed! 🎉',
+                'paused': 'has been paused'
+            }
+            
+            create_notification(
+                user_id=user_id,
+                notification_type=notification_type,
+                message=f'"{project_name}" {status_messages.get(status, f"status changed to {status}")}',
+                project_id=project_id,
+                project_name=project_name
+            )
+        
+        # 🆕 CREATE NOTIFICATION for progress update (if changed significantly)
+        if progress_percentage is not None and abs(progress_percentage - old_progress) >= 5:
+            create_notification(
+                user_id=user_id,
+                notification_type='progress_updated',
+                message=f'"{project_name}" progress updated to {progress_percentage}%',
+                project_id=project_id,
+                project_name=project_name
+            )
+            
+            # 🆕 CHECK FOR MILESTONES
+            milestones = [25, 50, 75]
+            for milestone in milestones:
+                if old_progress < milestone <= progress_percentage:
+                    create_notification(
+                        user_id=user_id,
+                        notification_type='milestone_reached',
+                        message=f'🎯 "{project_name}" reached {milestone}% completion milestone!',
+                        project_id=project_id,
+                        project_name=project_name
+                    )
+        
+        # Return updated data
         return jsonify({
             'success': True,
-            'message': 'Status updated successfully'
+            'message': 'Status updated successfully',
+            'project': {
+                'id': project_id,
+                'status': updated_project['status'],
+                'progress_percentage': int(updated_project['progress_percentage'] or 0),
+                'start_date': str(updated_project['start_date']) if updated_project['start_date'] else None,
+                'end_date': str(updated_project['end_date']) if updated_project['end_date'] else None,
+                'updated_at': str(updated_project['updated_at'])
+            }
         }), 200
         
     except Exception as e:
-        print(f"Error updating status: {e}")
+        print(f"❌ Error updating status: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1259,7 +1432,7 @@ def reanalyze_project(project_id):
             cur.close()
             return jsonify({'error': 'Analysis failed'}), 500
         
-        # Update project
+        # Update project with new analysis
         cur.execute('''
             UPDATE projects
             SET vegetation_index = %s,
@@ -1267,6 +1440,7 @@ def reanalyze_project(project_id):
                 soil_ph = %s,
                 temperature = %s,
                 humidity = %s,
+                elevation = %s,
                 last_ai_analysis = %s
             WHERE id = %s
         ''', (
@@ -1275,12 +1449,22 @@ def reanalyze_project(project_id):
             ai_analysis['soil_ph'],
             ai_analysis['temperature'],
             ai_analysis['humidity'],
+            ai_analysis.get('elevation', 0),
             datetime.now(),
             project_id
         ))
         
         mysql.connection.commit()
         cur.close()
+        
+        # 🆕 CREATE NOTIFICATION for analysis complete
+        create_notification(
+            user_id=session.get('user_id'),
+            notification_type='analysis_complete',
+            message=f'🧠 AI analysis completed for "{project["name"]}"',
+            project_id=project_id,
+            project_name=project['name']
+        )
         
         return jsonify({'success': True, 'analysis': ai_analysis}), 200
         

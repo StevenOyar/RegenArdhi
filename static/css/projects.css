@@ -1388,11 +1388,26 @@ header {
 /* ========================================
    FOOTER
 ======================================== */
+/* ========================================
+   ENHANCED FOOTER WITH GREEN THEME
+======================================== */
 .footer {
-    background: var(--gray-900);
-    color: var(--gray-300);
+    background: linear-gradient(135deg, #064e3b 0%, #047857 50%, #059669 100%);
+    color: rgba(255, 255, 255, 0.9);
     padding: 3rem 2rem 1.5rem;
     margin-top: 4rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.footer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--primary-light), var(--primary), var(--primary-dark));
 }
 
 .footer-container {
@@ -1402,13 +1417,8 @@ header {
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 2rem;
     margin-bottom: 2rem;
-}
-
-.footer-logo {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    position: relative;
+    z-index: 1;
 }
 
 .footer-logo h2 {
@@ -1419,61 +1429,64 @@ header {
 .footer-description {
     margin-bottom: 1.5rem;
     line-height: 1.6;
-}
-
-.footer-social {
-    display: flex;
-    gap: 1rem;
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .footer-social a {
     width: 40px;
     height: 40px;
     border-radius: var(--radius-md);
-    background: var(--gray-800);
+    background: rgba(255, 255, 255, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--gray-300);
+    color: var(--white);
     transition: var(--transition);
+    backdrop-filter: blur(10px);
 }
 
 .footer-social a:hover {
-    background: var(--primary);
-    color: var(--white);
+    background: var(--white);
+    color: var(--primary);
     transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
 }
 
 .footer-section h3 {
     color: var(--white);
     margin-bottom: 1rem;
     font-size: 1.125rem;
+    position: relative;
+    padding-bottom: 0.5rem;
 }
 
-.footer-links {
-    list-style: none;
-}
-
-.footer-links li {
-    margin-bottom: 0.75rem;
+.footer-section h3::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: var(--white);
 }
 
 .footer-links a {
-    color: var(--gray-300);
+    color: rgba(255, 255, 255, 0.85);
     text-decoration: none;
     display: flex;
     align-items: center;
     gap: 0.5rem;
     transition: var(--transition);
+    padding: 0.25rem 0;
 }
 
 .footer-links a:hover {
-    color: var(--primary);
+    color: var(--white);
     transform: translateX(4px);
 }
 
-.footer-contact {
-    list-style: none;
+.footer-links a i {
+    color: rgba(255, 255, 255, 0.6);
 }
 
 .footer-contact li {
@@ -1481,10 +1494,15 @@ header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.footer-contact li i {
+    color: var(--white);
 }
 
 .footer-bottom {
-    border-top: 1px solid var(--gray-800);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
     padding-top: 1.5rem;
     display: flex;
     justify-content: space-between;
@@ -1493,19 +1511,18 @@ header {
     gap: 1rem;
 }
 
-.footer-bottom-links {
-    display: flex;
-    gap: 1.5rem;
+.footer-bottom p {
+    color: rgba(255, 255, 255, 0.85);
 }
 
 .footer-bottom-links a {
-    color: var(--gray-400);
+    color: rgba(255, 255, 255, 0.75);
     text-decoration: none;
     transition: var(--transition);
 }
 
 .footer-bottom-links a:hover {
-    color: var(--primary);
+    color: var(--white);
 }
 
 /* ========================================
@@ -1765,4 +1782,363 @@ header {
     .toast {
         min-width: auto;
     }
+}
+/* ========================================
+   ENHANCED STATUS CHANGE MODAL
+======================================== */
+
+/* Status Flow Container */
+.status-flow-container {
+    position: relative;
+    margin: 2rem 0;
+}
+
+.status-flow-line {
+    position: absolute;
+    top: 50%;
+    left: 10%;
+    right: 10%;
+    height: 3px;
+    background: linear-gradient(90deg, 
+        var(--gray-300) 0%, 
+        var(--gray-300) 33%, 
+        var(--gray-300) 66%, 
+        var(--gray-300) 100%);
+    transform: translateY(-50%);
+    z-index: 0;
+    transition: all 0.5s ease;
+}
+
+.status-flow-line.active-planning {
+    background: linear-gradient(90deg, #3b82f6 0%, var(--gray-300) 33%);
+}
+
+.status-flow-line.active-active {
+    background: linear-gradient(90deg, #3b82f6 0%, #10b981 50%, var(--gray-300) 66%);
+}
+
+.status-flow-line.active-completed {
+    background: linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #8b5cf6 100%);
+}
+
+.status-flow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    position: relative;
+    z-index: 1;
+}
+
+.status-option {
+    padding: 1.5rem 1rem;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--white);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.status-option::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transition: left 0.5s ease;
+}
+
+.status-option:hover::before {
+    left: 100%;
+}
+
+.status-option:hover {
+    border-color: var(--primary);
+    background: var(--gray-50);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.status-option.selected {
+    border-color: var(--primary);
+    background: linear-gradient(135deg, var(--primary-light), var(--primary));
+    color: var(--white);
+    transform: scale(1.05);
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+    animation: statusPulse 2s infinite;
+}
+
+@keyframes statusPulse {
+    0%, 100% {
+        box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
+    }
+    50% {
+        box-shadow: 0 8px 32px rgba(16, 185, 129, 0.6);
+    }
+}
+
+.status-icon-wrapper {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--gray-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.status-option:hover .status-icon-wrapper {
+    background: rgba(16, 185, 129, 0.1);
+    transform: rotate(360deg);
+}
+
+.status-option.selected .status-icon-wrapper {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+.status-icon-wrapper i {
+    font-size: 1.75rem;
+    color: var(--gray-600);
+    transition: all 0.3s ease;
+}
+
+.status-option.selected .status-icon-wrapper i {
+    color: var(--white);
+}
+
+.status-name {
+    font-weight: 700;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.status-percentage {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.status-option.selected .status-percentage {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* Progress Adjustment Slider */
+.progress-adjustment {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: var(--gray-50);
+    border-radius: var(--radius-lg);
+    border: 2px solid var(--primary);
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.progress-adjustment label {
+    display: block;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    color: var(--gray-700);
+}
+
+.progress-adjustment strong {
+    color: var(--primary);
+    font-size: 1.25rem;
+}
+
+.progress-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--gray-200);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    margin-bottom: 1rem;
+}
+
+.progress-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+    transition: all 0.2s ease;
+}
+
+.progress-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.6);
+}
+
+.progress-slider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+    transition: all 0.2s ease;
+}
+
+.progress-slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.6);
+}
+
+.progress-preview {
+    margin-top: 0.5rem;
+}
+
+.progress-preview-bar {
+    height: 12px;
+    background: var(--gray-200);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.progress-preview-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--primary-light));
+    border-radius: var(--radius-full);
+    transition: width 0.3s ease;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+/* ========================================
+   ENHANCED PROGRESS BAR ANIMATIONS
+======================================== */
+
+.progress-bar {
+    height: 8px;
+    background: var(--gray-200);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+    border-radius: var(--radius-full);
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Animated shine effect on progress bar */
+.progress-fill::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.3), 
+        transparent
+    );
+    animation: progressShine 2s infinite;
+}
+
+@keyframes progressShine {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+/* Progress value animation */
+.progress-value {
+    color: var(--primary);
+    font-weight: 700;
+    transition: all 0.5s ease;
+}
+
+.progress-value.updating {
+    animation: numberPulse 0.5s ease;
+}
+
+@keyframes numberPulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.2);
+        color: var(--primary-light);
+    }
+}
+
+/* Progress bar glow effect for active projects */
+.project-card[data-status="active"] .progress-fill {
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    animation: progressGlow 2s infinite;
+}
+
+@keyframes progressGlow {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.8);
+    }
+}
+
+/* Completed progress bar special styling */
+.progress-fill[style*="width: 100%"] {
+    background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+    animation: completedCelebration 0.5s ease;
+}
+
+@keyframes completedCelebration {
+    0% {
+        transform: scaleX(0);
+    }
+    50% {
+        transform: scaleX(1.05);
+    }
+    100% {
+        transform: scaleX(1);
+    }
+}
+
+/* Planning status (0%) - subtle pulse */
+.progress-fill[style*="width: 0%"] {
+    background: var(--gray-300);
+}
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+    border-radius: var(--radius-full);
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    width: 0%; /* Important: default to 0% */
 }

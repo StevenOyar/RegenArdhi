@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/projects.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
+
 </head>
 <body>
     <!-- Navbar -->
@@ -26,10 +28,10 @@
                 <button class="btn btn-primary" id="quickCreateBtn">
                     <i class="fas fa-plus"></i> New Project
                 </button>
-                <button class="btn-icon notification-btn" id="notificationBtn">
-                    <i class="fas fa-bell"></i>
-                    <span class="notification-badge hidden" id="notificationBadge">0</span>
-                </button>
+               <button class="btn-icon notification-btn" id="notificationBtn">
+    <i class="fas fa-bell"></i>
+    <span class="notification-badge hidden" id="notificationBadge">0</span>
+</button>
                 <div class="user-menu">
                     <button class="user-btn" id="userMenuBtn">
                         <i class="fas fa-user-circle"></i>
@@ -358,24 +360,56 @@
             </div>
             <div class="modal-body">
                 <p class="status-change-info">Moving project: <strong id="statusProjectName"></strong></p>
-                <div class="status-flow">
-                    <div class="status-option" data-status="planning">
-                        <i class="fas fa-drafting-compass"></i>
-                        <span>Planning</span>
-                    </div>
-                    <div class="status-option" data-status="active">
-                        <i class="fas fa-play-circle"></i>
-                        <span>Active</span>
-                    </div>
-                    <div class="status-option" data-status="completed">
-                        <i class="fas fa-check-circle"></i>
-                        <span>Completed</span>
-                    </div>
-                    <div class="status-option" data-status="paused">
-                        <i class="fas fa-pause-circle"></i>
-                        <span>Paused</span>
+                
+                <!-- Progress Flow Visualization -->
+                <div class="status-flow-container">
+                    <div class="status-flow-line"></div>
+                    <div class="status-flow">
+                        <div class="status-option" data-status="planning" data-progress="0">
+                            <div class="status-icon-wrapper">
+                                <i class="fas fa-drafting-compass"></i>
+                            </div>
+                            <span class="status-name">Planning</span>
+                            <span class="status-percentage">0%</span>
+                        </div>
+                        <div class="status-option" data-status="active" data-progress="50">
+                            <div class="status-icon-wrapper">
+                                <i class="fas fa-play-circle"></i>
+                            </div>
+                            <span class="status-name">Active</span>
+                            <span class="status-percentage">1-99%</span>
+                        </div>
+                        <div class="status-option" data-status="completed" data-progress="100">
+                            <div class="status-icon-wrapper">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <span class="status-name">Completed</span>
+                            <span class="status-percentage">100%</span>
+                        </div>
+                        <div class="status-option" data-status="paused" data-progress="null">
+                            <div class="status-icon-wrapper">
+                                <i class="fas fa-pause-circle"></i>
+                            </div>
+                            <span class="status-name">Paused</span>
+                            <span class="status-percentage">Hold</span>
+                        </div>
                     </div>
                 </div>
+                
+                <!-- Progress Adjustment (only shows for active status) -->
+                <div class="progress-adjustment" id="progressAdjustment" style="display: none;">
+                    <label for="progressSlider">
+                        <i class="fas fa-sliders-h"></i> Adjust Progress: 
+                        <strong id="progressValue">50</strong>%
+                    </label>
+                    <input type="range" id="progressSlider" min="1" max="99" value="50" class="progress-slider">
+                    <div class="progress-preview">
+                        <div class="progress-preview-bar">
+                            <div class="progress-preview-fill" id="progressPreviewFill"></div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="status-actions">
                     <button class="btn btn-outline" onclick="closeStatusModal()">Cancel</button>
                     <button class="btn btn-primary" onclick="confirmStatusChange()">
@@ -391,5 +425,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="{{ url_for('static', filename='js/projects.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+
 </body>
 </html>

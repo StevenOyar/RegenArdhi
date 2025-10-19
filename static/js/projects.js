@@ -148,6 +148,11 @@ async function loadProjects() {
             renderRecentProjects();
             filterAndRenderProjects();
             
+            // IMPORTANT: Set initial progress bar widths after rendering
+            setTimeout(() => {
+                initializeProgressBars();
+            }, 100);
+            
             // Initialize map if it's expanded
             if (!document.getElementById('mapSection').classList.contains('collapsed')) {
                 initializeMainMap();
@@ -164,6 +169,23 @@ async function loadProjects() {
         showToast('Error connecting to server', 'error');
         showEmptyState();
     }
+}
+
+// Add this NEW function to initialize progress bars with correct widths
+function initializeProgressBars() {
+    state.projects.forEach(project => {
+        const cards = document.querySelectorAll(`[data-project-id="${project.id}"]`);
+        cards.forEach(card => {
+            const progressFill = card.querySelector('.progress-fill');
+            const progressValue = card.querySelector('.progress-value');
+            
+            if (progressFill && progressValue) {
+                const progress = parseInt(project.progress_percentage || 0);
+                progressFill.style.width = progress + '%';
+                progressValue.textContent = progress + '%';
+            }
+        });
+    });
 }
 
 // ========================
@@ -187,6 +209,373 @@ async function loadNotifications() {
     }
 }
 
+
+// ========================================
+// KEY CHANGES TO projects.js FOR NOTIFICATIONS
+// Add these updates to your existing projects.js
+// ========================================
+
+// UPDATE: handleProjectSubmit function
+async function handleProjectSubmit(e) {
+    e.preventDefault();
+    
+    const projectId = document.getElementById('projectId')?.value;
+    const formData = {
+        name: document.getElementById('projectName')?.value,
+        description: document.getElementById('projectDescription')?.value || '',
+        project_type: document.getElementById('projectType')?.value,
+        area_hectares: parseFloat(document.getElementById('projectArea')?.value),
+        latitude: parseFloat(document.getElementById('latitude')?.value),
+        longitude: parseFloat(document.getElementById('longitude')?.value)
+    };
+    
+    if (!formData.name || !formData.project_type || !formData.area_hectares || 
+        !formData.latitude || !formData.longitude) {
+        NotificationSystem.showToast('Please fill all required fields', 'warning');
+        return;
+    }
+    
+    // 🆕 Show creating animation
+    NotificationSystem.showCreatingAnimation(
+        projectId ? 'Updating project...' : 'Creating project with AI analysis...'
+    );
+    
+    try {
+        const url = projectId ? `/projects/${projectId}/update` : '/projects/create';
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        
+        // 🆕 Hide creating animation
+        NotificationSystem.hideCreatingAnimation();
+        
+        if (data.success) {
+            // 🆕 Show appropriate live notification
+            if (projectId) {
+                NotificationSystem.notifyProjectUpdated(formData.name);
+            } else {
+                NotificationSystem.notifyProjectCreated(formData.name);
+            }
+            
+            closeProjectModal();
+            await loadProjects();
+        } else {
+            NotificationSystem.showToast(data.error || 'Failed to save project', 'error');
+        }
+    } catch (error) {
+        console.error('Form submit error:', error);
+        NotificationSystem.hideCreatingAnimation();
+        NotificationSystem.showToast('Error saving project', 'error');
+    }
+}
+
+// UPDATE: confirmStatusChange function
+window.confirmStatusChange = async function() {
+    if (!state.statusChangeProject || !state.newStatus) {
+        NotificationSystem.showToast('Please select a status', 'warning');
+        return;
+    }
+    
+    const project = state.projects.find(p => p.id === state.statusChangeProject);
+    const projectName = project ? project.name : 'Project';
+    
+    const requestData = { status: state.newStatus };
+    
+    // Include progress if status is 'active'
+    if (state.newStatus === 'active') {
+        const progressSlider = document.getElementById('progressSlider');
+        if (progressSlider) {
+            requestData.progress_percentage = parseInt(progressSlider.value);
+        }
+    } else if (state.newStatus === 'planning') {
+        requestData.progress_percentage = 0;
+    } else if (state.newStatus === 'completed') {
+        requestData.progress_percentage = 100;
+    }
+    
+    console.log('📤 Sending status update:', requestData);
+    
+    const confirmBtn = event.target;
+    const originalHTML = confirmBtn.innerHTML;
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    
+    try {
+        const response = await fetch(`/projects/${state.statusChangeProject}/update-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log('✅ Status update successful:', data);
+            
+            // Update the project in state with actual saved data
+            const projectIndex = state.projects.findIndex(p => p.id === state.statusChangeProject);
+            if (projectIndex !== -1 && data.project) {
+                state.projects[projectIndex].status = data.project.status;
+                state.projects[projectIndex].progress_percentage = data.project.progress_percentage;
+                console.log(`✅ Updated local state - Progress: ${data.project.progress_percentage}%`);
+            }
+            
+            // 🆕 Show status change notification
+            NotificationSystem.notifyStatusChanged(projectName, state.newStatus);
+            
+            // 🆕 Show progress notification if applicable
+            if (requestData.progress_percentage !== undefined) {
+                NotificationSystem.notifyProgressUpdated(projectName, requestData.progress_percentage);
+            }
+            
+            // Animate the progress bar update using actual saved value
+            if (data.project && data.project.progress_percentage !== undefined) {
+                await animateProgressUpdate(state.statusChangeProject, data.project.progress_percentage);
+            }
+            
+            // Close modal
+            closeStatusModal();
+            
+            // Reload projects to ensure everything is in sync
+            await loadProjects();
+            
+        } else {
+            console.error('❌ Update failed:', data.error);
+            NotificationSystem.showToast(data.error || 'Failed to update status', 'error');
+        }
+    } catch (error) {
+        console.error('❌ Status update error:', error);
+        NotificationSystem.showToast('Error updating status', 'error');
+    } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = originalHTML;
+    }
+};
+
+// UPDATE: deleteProject function
+window.deleteProject = async function(projectId) {
+    const project = state.projects.find(p => p.id === projectId);
+    const projectName = project ? project.name : 'this project';
+    
+    if (!confirm(`Are you sure you want to delete "${projectName}"? This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/projects/${projectId}/delete`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // 🆕 Show deletion notification
+            NotificationSystem.notifyProjectDeleted(projectName);
+            
+            await loadProjects();
+        } else {
+            NotificationSystem.showToast(data.error || 'Failed to delete project', 'error');
+        }
+    } catch (error) {
+        console.error('Delete error:', error);
+        NotificationSystem.showToast('Error deleting project', 'error');
+    }
+};
+
+// UPDATE: handleQuickCreate function
+async function handleQuickCreate() {
+    const btn = event.target.closest('button');
+    if (!btn) return;
+    
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+    
+    // 🆕 Show live notification
+    NotificationSystem.showLiveNotification(
+        '📍 Getting Location',
+        'Detecting your GPS coordinates...',
+        'info',
+        3000
+    );
+    
+    try {
+        const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            });
+        });
+        
+        const projectData = {
+            name: `Quick Project - ${new Date().toLocaleString()}`,
+            description: 'Quick-created project using GPS location',
+            project_type: 'reforestation',
+            area_hectares: 10,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+        };
+        
+        // 🆕 Show creating animation
+        NotificationSystem.showCreatingAnimation('Creating project with AI analysis...');
+        
+        const response = await fetch('/projects/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(projectData)
+        });
+        
+        const data = await response.json();
+        
+        // 🆕 Hide creating animation
+        NotificationSystem.hideCreatingAnimation();
+        
+        if (data.success) {
+            // 🆕 Show success notification
+            NotificationSystem.notifyProjectCreated(projectData.name);
+            
+            await loadProjects();
+        } else {
+            NotificationSystem.showToast(data.error || 'Failed to create project', 'error');
+        }
+    } catch (error) {
+        console.error('Quick create error:', error);
+        
+        // 🆕 Hide creating animation if shown
+        NotificationSystem.hideCreatingAnimation();
+        
+        if (error.code === 1) {
+            NotificationSystem.showToast('Please enable location access to use Quick Create', 'warning');
+        } else {
+            NotificationSystem.showToast('Failed to create project. Please try manual creation.', 'error');
+        }
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    }
+}
+
+// 🆕 NEW: Function to show analysis complete notification
+async function reanalyzeProject(projectId) {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) return;
+    
+    // Show creating animation
+    NotificationSystem.showCreatingAnimation('Re-analyzing with AI...');
+    
+    try {
+        const response = await fetch(`/projects/${projectId}/reanalyze`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        NotificationSystem.hideCreatingAnimation();
+        
+        if (data.success) {
+            // 🆕 Show analysis complete notification
+            NotificationSystem.notifyAnalysisComplete(project.name);
+            
+            await loadProjects();
+        } else {
+            NotificationSystem.showToast('Analysis failed', 'error');
+        }
+    } catch (error) {
+        NotificationSystem.hideCreatingAnimation();
+        NotificationSystem.showToast('Error during analysis', 'error');
+    }
+}
+
+// 🆕 NEW: Replace all showToast calls with NotificationSystem.showToast
+// Example - Update loadProjects error handling:
+async function loadProjects() {
+    console.log('📊 Loading projects...');
+    
+    try {
+        const response = await fetch('/projects/api/list');
+        const data = await response.json();
+        
+        if (data.success) {
+            state.projects = data.projects || [];
+            
+            updateStatistics();
+            updateStatusCounts();
+            renderRecentProjects();
+            filterAndRenderProjects();
+            
+            setTimeout(() => {
+                initializeProgressBars();
+            }, 100);
+            
+            if (!document.getElementById('mapSection').classList.contains('collapsed')) {
+                initializeMainMap();
+                updateMainMap();
+            }
+            
+            console.log(`✅ Loaded ${state.projects.length} projects`);
+        } else {
+            // 🆕 Use NotificationSystem
+            NotificationSystem.showToast(data.error || 'Failed to load projects', 'error');
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading projects:', error);
+        // 🆕 Use NotificationSystem
+        NotificationSystem.showToast('Error connecting to server', 'error');
+        showEmptyState();
+    }
+}
+
+// 🆕 NEW: Update error handlers in other functions
+window.useCurrentLocation = function() {
+    NotificationSystem.showLiveNotification(
+        '📍 Getting Location',
+        'Accessing your GPS...',
+        'info',
+        3000
+    );
+    
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude.toFixed(6);
+            const lng = position.coords.longitude.toFixed(6);
+            
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+            
+            updateModalMarker();
+            
+            // 🆕 Use NotificationSystem
+            NotificationSystem.showToast('✅ Location detected successfully!', 'success');
+        },
+        (error) => {
+            let message = 'Could not get your location';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message = 'Location permission denied. Please enable GPS.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message = 'Location information unavailable';
+                    break;
+                case error.TIMEOUT:
+                    message = 'Location request timed out';
+                    break;
+            }
+            // 🆕 Use NotificationSystem
+            NotificationSystem.showToast(message, 'error');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+};
+
+
+console.log('✅ Projects.js with Notification Integration Ready!');
 function updateNotificationBadge() {
     const badge = document.getElementById('notificationBadge');
     if (badge) {
@@ -419,7 +808,6 @@ function renderRecentProjects() {
     section.style.display = 'block';
     container.innerHTML = recentProjects.map(project => createProjectCard(project)).join('');
 }
-
 function createProjectCard(project) {
     const statusColors = {
         'planning': '#3b82f6',
@@ -436,7 +824,8 @@ function createProjectCard(project) {
     };
     
     return `
-        <div class="project-card" onclick="viewProjectDetails(${project.id})">
+    <div class="project-card" data-project-id="${project.id}" data-status="${project.status}" onclick="viewProjectDetails(${project.id})">
+            <!-- Rest of the card content remains the same -->
             <div class="project-card-header">
                 <div class="project-card-title">
                     <h4>
@@ -824,6 +1213,211 @@ window.openStatusModal = function(projectId, projectName, currentStatus) {
     document.getElementById('statusChangeModal').classList.add('show');
 };
 
+// Enhanced status change with progress slider
+window.openStatusModal = function(projectId, projectName, currentStatus) {
+    state.statusChangeProject = projectId;
+    state.newStatus = currentStatus;
+    
+    const project = state.projects.find(p => p.id === projectId);
+    const currentProgress = project ? parseInt(project.progress_percentage || 0) : 0;
+    
+    document.getElementById('statusProjectName').textContent = projectName;
+    
+    // Setup status options
+    const statusOptions = document.querySelectorAll('.status-option');
+    const flowLine = document.querySelector('.status-flow-line');
+    const progressAdjustment = document.getElementById('progressAdjustment');
+    const progressSlider = document.getElementById('progressSlider');
+    const progressValue = document.getElementById('progressValue');
+    const progressPreviewFill = document.getElementById('progressPreviewFill');
+    
+    statusOptions.forEach(option => {
+        option.classList.remove('selected');
+        
+        if (option.dataset.status === currentStatus) {
+            option.classList.add('selected');
+            updateFlowLine(currentStatus, flowLine);
+        }
+        
+        option.onclick = function() {
+            statusOptions.forEach(opt => opt.classList.remove('selected'));
+            this.classList.add('selected');
+            state.newStatus = this.dataset.status;
+            
+            // Update flow line animation
+            updateFlowLine(state.newStatus, flowLine);
+            
+            // Show/hide progress slider for 'active' status
+            if (state.newStatus === 'active') {
+                progressAdjustment.style.display = 'block';
+                progressSlider.value = currentProgress > 0 && currentProgress < 100 ? currentProgress : 50;
+                updateProgressDisplay(progressSlider.value);
+            } else {
+                progressAdjustment.style.display = 'none';
+            }
+        };
+    });
+    
+    // Progress slider events
+    if (progressSlider) {
+        progressSlider.value = currentProgress > 0 && currentProgress < 100 ? currentProgress : 50;
+        updateProgressDisplay(progressSlider.value);
+        
+        progressSlider.oninput = function() {
+            updateProgressDisplay(this.value);
+        };
+    }
+    
+    function updateProgressDisplay(value) {
+        if (progressValue) progressValue.textContent = value;
+        if (progressPreviewFill) progressPreviewFill.style.width = value + '%';
+    }
+    
+    function updateFlowLine(status, line) {
+        if (!line) return;
+        line.className = 'status-flow-line active-' + status;
+    }
+    
+    // Show progress adjustment if current status is active
+    if (currentStatus === 'active') {
+        progressAdjustment.style.display = 'block';
+    } else {
+        progressAdjustment.style.display = 'none';
+    }
+    
+    document.getElementById('statusChangeModal').classList.add('show');
+};
+
+// Update confirmStatusChange to include progress
+window.confirmStatusChange = async function() {
+    if (!state.statusChangeProject || !state.newStatus) {
+        showToast('Please select a status', 'warning');
+        return;
+    }
+    
+    const requestData = { status: state.newStatus };
+    
+    // Include progress if status is 'active'
+    if (state.newStatus === 'active') {
+        const progressSlider = document.getElementById('progressSlider');
+        if (progressSlider) {
+            requestData.progress_percentage = parseInt(progressSlider.value);
+        }
+    } else if (state.newStatus === 'planning') {
+        requestData.progress_percentage = 0;
+    } else if (state.newStatus === 'completed') {
+        requestData.progress_percentage = 100;
+    }
+    // For 'paused', don't change progress - backend will keep existing value
+    
+    console.log('📤 Sending status update:', requestData);
+    
+    // Add visual feedback
+    const confirmBtn = event.target;
+    const originalHTML = confirmBtn.innerHTML;
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    
+    try {
+        const response = await fetch(`/projects/${state.statusChangeProject}/update-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log('✅ Status update successful:', data);
+            
+            // IMPORTANT: Update the project in state with actual saved data
+            const projectIndex = state.projects.findIndex(p => p.id === state.statusChangeProject);
+            if (projectIndex !== -1 && data.project) {
+                state.projects[projectIndex].status = data.project.status;
+                state.projects[projectIndex].progress_percentage = data.project.progress_percentage;
+                console.log(`✅ Updated local state - Progress: ${data.project.progress_percentage}%`);
+            }
+            
+            // Show success toast
+            showToast('✅ Status and progress updated!', 'success');
+            
+            // Animate the progress bar update using actual saved value
+            if (data.project && data.project.progress_percentage !== undefined) {
+                await animateProgressUpdate(state.statusChangeProject, data.project.progress_percentage);
+            }
+            
+            // Close modal
+            closeStatusModal();
+            
+            // Reload projects to ensure everything is in sync
+            await loadProjects();
+            
+        } else {
+            console.error('❌ Update failed:', data.error);
+            showToast(data.error || 'Failed to update status', 'error');
+        }
+    } catch (error) {
+        console.error('❌ Status update error:', error);
+        showToast('Error updating status', 'error');
+    } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = originalHTML;
+    }
+};
+
+
+async function animateProgressUpdate(projectId, newProgress) {
+    return new Promise((resolve) => {
+        const projectCards = document.querySelectorAll(`[data-project-id="${projectId}"]`);
+        
+        if (projectCards.length === 0) {
+            console.log('⚠️ No cards found for project:', projectId);
+            resolve();
+            return;
+        }
+        
+        console.log(`🎬 Animating ${projectCards.length} card(s) to ${newProgress}%`);
+        
+        projectCards.forEach(card => {
+            const progressFill = card.querySelector('.progress-fill');
+            const progressValue = card.querySelector('.progress-value');
+            
+            if (progressFill && progressValue) {
+                const currentWidth = progressFill.style.width || '0%';
+                const currentProgress = parseInt(currentWidth) || 0;
+                const targetProgress = parseInt(newProgress) || 0;
+                
+                console.log(`📊 Animating from ${currentProgress}% to ${targetProgress}%`);
+                
+                // Add updating class for pulse animation
+                progressValue.classList.add('updating');
+                
+                // Animate the progress change
+                animateValue(currentProgress, targetProgress, 1000, (value) => {
+                    progressFill.style.width = value + '%';
+                    progressValue.textContent = Math.round(value) + '%';
+                });
+                
+                // IMPORTANT: Set final value explicitly after animation
+                setTimeout(() => {
+                    progressFill.style.width = targetProgress + '%';
+                    progressValue.textContent = targetProgress + '%';
+                    progressValue.classList.remove('updating');
+                    console.log(`✅ Animation complete - Final: ${targetProgress}%`);
+                    
+                    // Celebrate if reaching 100%
+                    if (targetProgress === 100 && currentProgress < 100) {
+                        celebrateCompletion(projectId);
+                    }
+                }, 1050);
+            }
+        });
+        
+        // Resolve after animation completes
+        setTimeout(resolve, 1200);
+    });
+}
+
 window.closeStatusModal = function() {
     document.getElementById('statusChangeModal').classList.remove('show');
     state.statusChangeProject = null;
@@ -836,17 +1430,43 @@ window.confirmStatusChange = async function() {
         return;
     }
     
+    const requestData = { status: state.newStatus };
+    
+    // Include progress if status is 'active'
+    if (state.newStatus === 'active') {
+        const progressSlider = document.getElementById('progressSlider');
+        if (progressSlider) {
+            requestData.progress_percentage = parseInt(progressSlider.value);
+        }
+    } else if (state.newStatus === 'planning') {
+        requestData.progress_percentage = 0;
+    } else if (state.newStatus === 'completed') {
+        requestData.progress_percentage = 100;
+    }
+    
+    // Add visual feedback
+    const confirmBtn = event.target;
+    const originalHTML = confirmBtn.innerHTML;
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    
     try {
         const response = await fetch(`/projects/${state.statusChangeProject}/update-status`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: state.newStatus })
+            body: JSON.stringify(requestData)
         });
         
         const data = await response.json();
         
         if (data.success) {
+            // Show success toast
             showToast('✅ Status updated successfully!', 'success');
+            
+            // Animate the progress bar update before closing modal
+            await animateProgressUpdate(state.statusChangeProject, requestData.progress_percentage);
+            
+            // Close modal and reload
             closeStatusModal();
             await loadProjects();
         } else {
@@ -855,8 +1475,88 @@ window.confirmStatusChange = async function() {
     } catch (error) {
         console.error('Status update error:', error);
         showToast('Error updating status', 'error');
+    } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = originalHTML;
     }
 };
+
+// Add this new function to animate progress updates
+// Enhanced function to animate progress updates everywhere
+async function animateProgressUpdate(projectId, newProgress) {
+    return new Promise((resolve) => {
+        // Find all project cards with this ID (both in recent and all projects panel)
+        const projectCards = document.querySelectorAll(`[data-project-id="${projectId}"]`);
+        
+        if (projectCards.length === 0) {
+            console.log('No cards found for project:', projectId);
+            resolve();
+            return;
+        }
+        
+        projectCards.forEach(card => {
+            const progressFill = card.querySelector('.progress-fill');
+            const progressValue = card.querySelector('.progress-value');
+            
+            if (progressFill && progressValue) {
+                // Get current progress from the element
+                const currentWidth = progressFill.style.width || '0%';
+                const currentProgress = parseInt(currentWidth) || 0;
+                const targetProgress = newProgress || 0;
+                
+                console.log(`Animating progress from ${currentProgress}% to ${targetProgress}%`);
+                
+                // Add updating class for pulse animation
+                progressValue.classList.add('updating');
+                
+                // Animate the progress change
+                animateValue(currentProgress, targetProgress, 1000, (value) => {
+                    progressFill.style.width = value + '%';
+                    progressValue.textContent = Math.round(value) + '%';
+                });
+                
+                // Remove updating class after animation
+                setTimeout(() => {
+                    progressValue.classList.remove('updating');
+                }, 1000);
+                
+                // Celebrate if reaching 100%
+                if (targetProgress === 100 && currentProgress < 100) {
+                    setTimeout(() => {
+                        celebrateCompletion(projectId);
+                    }, 1000);
+                }
+            } else {
+                console.warn('Progress elements not found in card:', card);
+            }
+        });
+        
+        // Resolve after animation completes
+        setTimeout(resolve, 1200);
+    });
+}
+
+// Add this helper function for smooth number animation
+function animateValue(start, end, duration, callback) {
+    const startTime = performance.now();
+    
+    function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Easing function for smooth animation
+        const easeOutCubic = 1 - Math.pow(1 - progress, 3);
+        const currentValue = start + (end - start) * easeOutCubic;
+        
+        callback(currentValue);
+        
+        if (progress < 1) {
+            requestAnimationFrame(update);
+        }
+    }
+    
+    requestAnimationFrame(update);
+}
 
 // ========================
 // MODAL FUNCTIONS
@@ -1180,6 +1880,115 @@ function showToast(message, type = 'info') {
         setTimeout(() => toast.remove(), 300);
     }, 4000);
 }
+
+
+// Add this function after the createProjectCard function
+function updateProjectProgress(projectId, newProgress, animated = true) {
+    const projectCards = document.querySelectorAll(`[data-project-id="${projectId}"]`);
+    
+    projectCards.forEach(card => {
+        const progressFill = card.querySelector('.progress-fill');
+        const progressValue = card.querySelector('.progress-value');
+        
+        if (!progressFill || !progressValue) return;
+        
+        if (animated) {
+            // Add updating class for animation
+            progressValue.classList.add('updating');
+            
+            // Get current progress
+            const currentWidth = progressFill.style.width || '0%';
+            const currentProgress = parseInt(currentWidth);
+            
+            // Animate to new progress
+            animateValue(currentProgress, newProgress, 800, (value) => {
+                progressFill.style.width = value + '%';
+                progressValue.textContent = Math.round(value) + '%';
+            });
+            
+            // Remove updating class after animation
+            setTimeout(() => {
+                progressValue.classList.remove('updating');
+            }, 800);
+        } else {
+            // Instant update
+            progressFill.style.width = newProgress + '%';
+            progressValue.textContent = newProgress + '%';
+        }
+    });
+}
+
+// Export for use in other functions
+window.updateProjectProgress = updateProjectProgress;
+
+function celebrateCompletion(projectId) {
+    const projectCards = document.querySelectorAll(`[data-project-id="${projectId}"]`);
+    
+    projectCards.forEach(card => {
+        // Add completion effect
+        card.style.animation = 'none';
+        setTimeout(() => {
+            card.style.animation = 'completionPulse 0.6s ease';
+        }, 10);
+        
+        // Create confetti effect (optional)
+        createConfetti(card);
+    });
+}
+
+// Add this CSS for the completion animation
+const completionStyles = document.createElement('style');
+completionStyles.textContent = `
+    @keyframes completionPulse {
+        0%, 100% {
+            transform: scale(1);
+        }
+        25% {
+            transform: scale(1.02);
+        }
+        75% {
+            transform: scale(0.98);
+        }
+    }
+`;
+document.head.appendChild(completionStyles);
+
+// Optional: Simple confetti effect
+function createConfetti(element) {
+    const colors = ['#10b981', '#8b5cf6', '#f59e0b', '#3b82f6'];
+    const rect = element.getBoundingClientRect();
+    
+    for (let i = 0; i < 20; i++) {
+        const confetti = document.createElement('div');
+        confetti.style.cssText = `
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            background: ${colors[Math.floor(Math.random() * colors.length)]};
+            left: ${rect.left + rect.width / 2}px;
+            top: ${rect.top + rect.height / 2}px;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10000;
+        `;
+        document.body.appendChild(confetti);
+        
+        // Animate confetti
+        const angle = (Math.random() * 360) * (Math.PI / 180);
+        const velocity = 100 + Math.random() * 100;
+        const tx = Math.cos(angle) * velocity;
+        const ty = Math.sin(angle) * velocity;
+        
+        confetti.animate([
+            { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+            { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+        ], {
+            duration: 1000,
+            easing: 'cubic-bezier(0, 0.5, 0.5, 1)'
+        }).onfinish = () => confetti.remove();
+    }
+}
+
 
 // ========================
 // ADDITIONAL CSS STYLES
