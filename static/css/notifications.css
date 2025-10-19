@@ -1,6 +1,6 @@
 /* ========================================
-   REGENARDHI - REUSABLE NOTIFICATION SYSTEM
-   Google Cloud Inspired - Works on ANY page
+   REGENARDHI - NOTIFICATION SYSTEM CSS
+   Google Cloud Platform Inspired Animations
 ======================================== */
 
 /* ========================================
@@ -260,6 +260,11 @@
     color: var(--white);
 }
 
+.notification-item[data-type="project_deleted"] .notification-item-title i {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: var(--white);
+}
+
 .notification-item-time {
     font-size: 0.75rem;
     color: var(--gray-500);
@@ -482,6 +487,40 @@
 }
 
 /* ========================================
+   NOTIFICATION TYPE VARIANTS
+======================================== */
+
+/* Success/Created */
+.live-notification.success .live-notif-icon {
+    background: linear-gradient(135deg, #10b981, #059669);
+}
+
+/* Info/Updated */
+.live-notification.info .live-notif-icon {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+
+/* Warning/Status Changed */
+.live-notification.warning .live-notif-icon {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+/* Error/Deleted */
+.live-notification.error .live-notif-icon {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+/* Completed */
+.live-notification.completed .live-notif-icon {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+}
+
+/* Milestone */
+.live-notification.milestone .live-notif-icon {
+    background: linear-gradient(135deg, #ec4899, #db2777);
+}
+
+/* ========================================
    NOTIFICATION BADGE (on nav button)
 ======================================== */
 .notification-badge {
@@ -536,126 +575,7 @@
 }
 
 /* ========================================
-   RESPONSIVE DESIGN
-======================================== */
-@media (max-width: 768px) {
-    .notification-panel {
-        width: 100%;
-        right: -100%;
-        border-radius: 0;
-        top: 0;
-        max-height: 100vh;
-    }
-    
-    .notification-panel.show {
-        right: 0;
-    }
-    
-    .live-notification {
-        min-width: calc(100% - 2rem);
-        max-width: calc(100% - 2rem);
-        left: 1rem;
-        right: 1rem;
-        top: 80px;
-    }
-}
-
-@media (max-width: 480px) {
-    .notification-header {
-        padding: 1.25rem;
-    }
-    
-    .notification-item {
-        padding: 1rem;
-    }
-    
-    .live-notif-icon {
-        width: 48px;
-        height: 48px;
-        font-size: 1.5rem;
-    }
-}
-
-/* ========================================
-   NOTIFICATION TYPE VARIANTS
-======================================== */
-
-/* Success/Created */
-.live-notification.success .live-notif-icon {
-    background: linear-gradient(135deg, #10b981, #059669);
-}
-
-/* Info/Updated */
-.live-notification.info .live-notif-icon {
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
-}
-
-/* Warning/Status Changed */
-.live-notification.warning .live-notif-icon {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-}
-
-/* Completed */
-.live-notification.completed .live-notif-icon {
-    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-}
-
-/* Milestone */
-.live-notification.milestone .live-notif-icon {
-    background: linear-gradient(135deg, #ec4899, #db2777);
-}
-
-/* ========================================
-   PREFERENCES TOGGLE (Reusable)
-======================================== */
-.toggle {
-    position: relative;
-    display: inline-block;
-    width: 52px;
-    height: 28px;
-}
-
-.toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--gray-300);
-    transition: 0.4s;
-    border-radius: 34px;
-}
-
-.toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 20px;
-    width: 20px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: 0.4s;
-    border-radius: 50%;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.toggle input:checked + .toggle-slider {
-    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-}
-
-.toggle input:checked + .toggle-slider:before {
-    transform: translateX(24px);
-}
-
-/* ========================================
-   ANIMATIONS FOR PROJECT CREATION
+   GCP-STYLE CREATING ANIMATION
 ======================================== */
 .creating-project-animation {
     position: fixed;
@@ -707,4 +627,161 @@
 .creating-subtext {
     font-size: 0.875rem;
     color: var(--gray-600);
+}
+
+/* ========================================
+   GCP-STYLE ACTION ANIMATIONS
+======================================== */
+
+/* Deleting Animation (Red) */
+@keyframes gcpDeleteFlash {
+    0% {
+        background: var(--white);
+        border-color: transparent;
+    }
+    25% {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: #ef4444;
+        transform: scale(0.98);
+    }
+    50% {
+        background: rgba(239, 68, 68, 0.2);
+        border-color: #dc2626;
+    }
+    75% {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: #ef4444;
+        transform: scale(0.98);
+    }
+    100% {
+        background: var(--white);
+        border-color: transparent;
+        transform: scale(1);
+    }
+}
+
+.project-card.deleting {
+    animation: gcpDeleteFlash 0.8s ease;
+    border: 2px solid #ef4444;
+}
+
+/* Updating Animation (Blue) */
+@keyframes gcpUpdateFlash {
+    0% {
+        background: var(--white);
+        border-color: transparent;
+    }
+    25% {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: #3b82f6;
+        transform: scale(1.02);
+    }
+    50% {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: #2563eb;
+    }
+    75% {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: #3b82f6;
+        transform: scale(1.02);
+    }
+    100% {
+        background: var(--white);
+        border-color: transparent;
+        transform: scale(1);
+    }
+}
+
+.project-card.updating {
+    animation: gcpUpdateFlash 0.8s ease;
+}
+
+/* Status Change Animation (Color based on status) */
+@keyframes gcpStatusFlash {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.03);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.project-card.status-changing {
+    animation: gcpStatusFlash 0.6s ease;
+}
+
+/* Planning Status (Blue) */
+.project-card[data-status="planning"].status-changing {
+    border: 2px solid #3b82f6;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+/* Active Status (Green) */
+.project-card[data-status="active"].status-changing {
+    border: 2px solid #10b981;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+/* Completed Status (Purple) */
+.project-card[data-status="completed"].status-changing {
+    border: 2px solid #8b5cf6;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+}
+
+/* Paused Status (Orange) */
+.project-card[data-status="paused"].status-changing {
+    border: 2px solid #f59e0b;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+/* ========================================
+   RESPONSIVE DESIGN
+======================================== */
+@media (max-width: 768px) {
+    .notification-panel {
+        width: 100%;
+        right: -100%;
+        border-radius: 0;
+        top: 0;
+        max-height: 100vh;
+    }
+    
+    .notification-panel.show {
+        right: 0;
+    }
+    
+    .live-notification {
+        min-width: calc(100% - 2rem);
+        max-width: calc(100% - 2rem);
+        left: 1rem;
+        right: 1rem;
+        top: 80px;
+    }
+}
+
+@media (max-width: 480px) {
+    .notification-header {
+        padding: 1.25rem;
+    }
+    
+    .notification-item {
+        padding: 1rem;
+    }
+    
+    .live-notif-icon {
+        width: 48px;
+        height: 48px;
+        font-size: 1.5rem;
+    }
+    
+    .creating-project-animation {
+        padding: 2rem;
+        min-width: 280px;
+    }
 }
