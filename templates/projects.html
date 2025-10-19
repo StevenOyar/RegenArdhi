@@ -8,7 +8,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/projects.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
-
 </head>
 <body>
     <!-- Navbar -->
@@ -28,10 +27,10 @@
                 <button class="btn btn-primary" id="quickCreateBtn">
                     <i class="fas fa-plus"></i> New Project
                 </button>
-               <button class="btn-icon notification-btn" id="notificationBtn">
-    <i class="fas fa-bell"></i>
-    <span class="notification-badge hidden" id="notificationBadge">0</span>
-</button>
+                <button class="btn-icon notification-btn" id="notificationBtn">
+                    <i class="fas fa-bell"></i>
+                    <span class="notification-badge hidden" id="notificationBadge">0</span>
+                </button>
                 <div class="user-menu">
                     <button class="user-btn" id="userMenuBtn">
                         <i class="fas fa-user-circle"></i>
@@ -50,25 +49,6 @@
             </button>
         </nav>
     </header>
-
-    <!-- Notification Panel -->
-    <div class="notification-panel" id="notificationPanel">
-        <div class="notification-header">
-            <h3><i class="fas fa-bell"></i> Notifications</h3>
-            <div class="notification-actions">
-                <button class="btn-text" onclick="markAllRead()">Mark all read</button>
-                <button class="btn-close-panel" onclick="closeNotificationPanel()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-        </div>
-        <div class="notification-list" id="notificationList">
-            <div class="loading-state">
-                <i class="fas fa-spinner fa-spin"></i>
-                <p>Loading notifications...</p>
-            </div>
-        </div>
-    </div>
 
     <!-- Main Content -->
     <main class="projects-main">
@@ -223,7 +203,7 @@
                     <span class="logo-icon">🌿</span>
                     <h2>RegenArdhi</h2>
                 </div>
-                <p class="footer-description">Restoring land with AI, data, and community action. Together, we're building a greener, sustainable future.</p>
+                <p class="footer-description">Restoring land with AI, data, and community action.</p>
                 <div class="footer-social">
                     <a href="#" title="Facebook"><i class="fab fa-facebook-f"></i></a>
                     <a href="#" title="Twitter"><i class="fab fa-x-twitter"></i></a>
@@ -424,8 +404,7 @@
     <div id="toastContainer"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <script src="{{ url_for('static', filename='js/projects.js') }}"></script>
     <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
-
+    <script src="{{ url_for('static', filename='js/projects.js') }}"></script>
 </body>
 </html>

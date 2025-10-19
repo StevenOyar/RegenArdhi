@@ -756,11 +756,12 @@ def projects():
     
     return render_template('projects.html', user=session)
 
+
 @projects_bp.route('/create', methods=['POST'])
 def create_project():
-    """Create a new project with AI analysis"""
+    """Create a new project with AI analysis - ENHANCED"""
     if 'user_id' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     
     try:
         data = request.get_json()
@@ -768,7 +769,7 @@ def create_project():
         
         required_fields = ['name', 'project_type', 'area_hectares', 'latitude', 'longitude']
         if not all(field in data for field in required_fields):
-            return jsonify({'error': 'Missing required fields'}), 400
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
         
         print(f"Creating project: {data['name']}")
         
@@ -780,7 +781,7 @@ def create_project():
         )
         
         if not ai_analysis:
-            return jsonify({'error': 'Failed to analyze location'}), 500
+            return jsonify({'success': False, 'error': 'Failed to analyze location'}), 500
         
         # Get readable location name
         location_name = get_location_name(float(data['latitude']), float(data['longitude']))
@@ -831,7 +832,7 @@ def create_project():
         
         print(f"✅ Project created successfully! ID: {project_id}")
         
-        # 🆕 CREATE NOTIFICATION
+        # CREATE NOTIFICATION with proper link
         create_notification(
             user_id=user_id,
             notification_type='project_created',
@@ -850,24 +851,33 @@ def create_project():
         print(f"Error creating project: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 
 @projects_bp.route('/<int:project_id>')
 def project_detail(project_id):
-    """View project details"""
+    """View project details - FIXED VERSION"""
     if 'user_id' not in session:
         return redirect(url_for('main.login'))
     
     try:
         from MySQLdb.cursors import DictCursor
         cur = mysql.connection.cursor(DictCursor)
+        user_id = session.get('user_id')
         
-        cur.execute('SELECT * FROM projects WHERE id = %s', (project_id,))
+        # Verify project belongs to user
+        cur.execute('''
+            SELECT * FROM projects 
+            WHERE id = %s AND user_id = %s
+        ''', (project_id, user_id))
+        
         project = cur.fetchone()
         
         if not project:
             cur.close()
-            return render_template('404.html'), 404
+            flash('Project not found or access denied', 'error')
+            return redirect(url_for('projects.projects'))
         
         # Parse JSON fields
         for field in ['recommended_crops', 'recommended_trees', 'restoration_techniques']:
@@ -877,21 +887,52 @@ def project_detail(project_id):
                         project[field] = json.loads(project[field])
                 except:
                     project[field] = []
+            else:
+                project[field] = []
+        
+        # Convert dates to strings
+        date_fields = ['start_date', 'end_date', 'created_at', 'updated_at', 'last_ai_analysis']
+        for date_field in date_fields:
+            if project.get(date_field):
+                try:
+                    project[date_field] = str(project[date_field])
+                except:
+                    project[date_field] = None
+        
+        # Convert Decimal types to float
+        if project.get('area_hectares'):
+            project['area_hectares'] = float(project['area_hectares'])
+        if project.get('soil_ph'):
+            project['soil_ph'] = float(project['soil_ph'])
+        if project.get('temperature'):
+            project['temperature'] = float(project['temperature'])
+        if project.get('vegetation_index'):
+            project['vegetation_index'] = float(project['vegetation_index'])
+        if project.get('estimated_budget'):
+            project['estimated_budget'] = float(project['estimated_budget'])
+        if project.get('latitude'):
+            project['latitude'] = float(project['latitude'])
+        if project.get('longitude'):
+            project['longitude'] = float(project['longitude'])
         
         cur.close()
         
-        return render_template('project_detail.html', project=project, user=session)
+        # Create inline template since project_detail.html doesn't exist
+        # This renders the project detail in a modal-like view
+        return render_template('projects.html', project=project, user=session)
         
     except Exception as e:
         print(f"Error fetching project detail: {e}")
-        return render_template('404.html'), 404
+        import traceback
+        traceback.print_exc()
+        flash('Error loading project details', 'error')
+        return redirect(url_for('projects.projects'))
 # ========================
 # NEW ROUTES FOR REDESIGNED FRONTEND
 # ========================
-
 @projects_bp.route('/<int:project_id>/update', methods=['POST'])
 def update_project(project_id):
-    """Update an existing project"""
+    """Update an existing project - ENHANCED"""
     if 'user_id' not in session:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     
@@ -995,7 +1036,7 @@ def update_project(project_id):
                 user_id
             ))
             
-            # 🆕 CREATE NOTIFICATION for re-analysis
+            # CREATE NOTIFICATION for re-analysis
             create_notification(
                 user_id=user_id,
                 notification_type='analysis_complete',
@@ -1019,7 +1060,7 @@ def update_project(project_id):
         
         print(f"✅ Project {project_id} updated successfully!")
         
-        # 🆕 CREATE NOTIFICATION for update
+        # CREATE NOTIFICATION for update
         create_notification(
             user_id=user_id,
             notification_type='project_updated',
@@ -1031,7 +1072,8 @@ def update_project(project_id):
         return jsonify({
             'success': True,
             'message': 'Project updated successfully',
-            'location_changed': location_changed
+            'location_changed': location_changed,
+            'project_id': project_id  # Return ID for frontend animation
         }), 200
         
     except Exception as e:
@@ -1041,16 +1083,17 @@ def update_project(project_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# delete 
 @projects_bp.route('/<int:project_id>/delete', methods=['DELETE'])
 def delete_project(project_id):
-    """Delete a project"""
+    """Delete a project - ENHANCED WITH ANIMATION"""
     if 'user_id' not in session:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     
     try:
         user_id = session.get('user_id')
         
-        # 🆕 Get project name before deleting (for notification)
+        # Get project name before deleting (for notification)
         from MySQLdb.cursors import DictCursor
         cur = mysql.connection.cursor(DictCursor)
         
@@ -1073,18 +1116,19 @@ def delete_project(project_id):
         
         print(f"✅ Project {project_id} deleted successfully!")
         
-        # 🆕 CREATE NOTIFICATION for deletion
+        # CREATE NOTIFICATION for deletion (no link since project is deleted)
         create_notification(
             user_id=user_id,
             notification_type='project_deleted',
             message=f'"{project_name}" has been deleted',
-            project_id=None,  # No project link since it's deleted
+            project_id=None,
             project_name=project_name
         )
         
         return jsonify({
             'success': True,
-            'message': 'Project deleted successfully'
+            'message': 'Project deleted successfully',
+            'project_id': project_id  # Return ID for frontend animation
         }), 200
         
     except Exception as e:
