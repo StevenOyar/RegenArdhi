@@ -785,3 +785,37 @@
         min-width: 280px;
     }
 }
+/* CRITICAL FIX FOR CHART HEIGHT */
+.chart-section {
+    background: var(--white);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--gray-200);
+    overflow: visible; /* Changed from hidden */
+    margin-bottom: 1.5rem;
+    animation: fadeInUp 0.5s ease backwards;
+}
+
+.chart-canvas {
+    padding: 1.5rem;
+    min-height: 350px;
+    height: 350px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chart-canvas canvas {
+    max-width: 100%;
+    height: 320px !important;
+    max-height: 320px !important;
+}
+
+/* Prevent chart container collapse */
+#ndviChart,
+#climateChart,
+#landCoverChart {
+    height: 320px !important;
+    min-height: 320px !important;
+}
